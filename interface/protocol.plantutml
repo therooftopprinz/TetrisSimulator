@@ -1,0 +1,94 @@
+@startuml
+
+title Teris Simulator Protocol
+
+== New Game ==
+
+note over gm
+  Create game
+end note
+
+gm --> server : CreateGameRequest wh:10x24
+gm <-- server : CreateGameRequest game:1
+
+== Player Join ==
+
+note over player1
+  Player 1 joins
+end note
+
+player1 --> server : JoinRequest game:1
+player1 <-- server : JoinAccept player:1
+
+note over player2
+  Player 2 joins
+end note
+
+player2 --> server : JoinRequest game:1
+player2 <-- server : JoinAccept player:2
+
+== Game Start ==
+
+gm --> server : GameStartIndication dtr: 1
+
+note over server
+  Initial pieces request
+end note
+
+gm <-- server : PieceRequest
+gm --> server : PieceResponse
+
+note over server
+  Initial block
+end note
+
+gm <-- server : BoardUpdateNotification : player: 1
+player1 <-- server : BoardUpdateNotification : player: 1
+player2 <-- server : BoardUpdateNotification : player: 1
+
+gm <-- server : BoardUpdateNotification : player: 2
+player2 <-- server : BoardUpdateNotification : player: 2
+player2 <-- server : BoardUpdateNotification : player: 2
+
+== Player Moves ==
+
+player1 --> server : PlayerActionIndication
+
+gm <-- server : BoardUpdateNotification player: 1
+player1 <-- server : BoardUpdateNotification player: 1
+
+alt updateNeeded()
+  player2 <-- server : BoardUpdateNotification player: 1
+end
+
+== Game Progresses ==
+
+note over server
+  Server is out of pieces
+end note
+
+gm <-- server : PieceRequest
+gm --> server : PieceResponse
+
+note over server
+  Player 1 down tick expires
+end note
+
+gm <-- server : BoardUpdateNotification player:1
+player1 <-- server : BoardUpdateNotification player:1
+player2 <-- server : BoardUpdateNotification player:1
+
+== Player Loses ==
+
+note over server
+  Player1 loses
+end note
+
+player1 <-- server : GameOverNotification
+
+
+== Game Ends ==
+
+player2 <-- server : GameOverNotification
+
+@enduml

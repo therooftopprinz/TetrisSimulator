@@ -1,0 +1,152 @@
+Type u8
+{
+    type(unsigned) width(8)
+};
+
+Type u64
+{
+    type(unsigned) width(64)
+};
+
+Type String
+{
+    type(asciiz)
+};
+
+Enumeration Action
+{
+    LEFT,
+    RIGHT,
+    SOFT_DROP,
+    HARD_DROP,
+    HOLD,
+    ROT_CLOCK,
+    ROT_CCLOCK,
+    ROT_180
+};
+
+Enumeration Piece
+{
+    L,
+    L_MIRRORED,
+    I,
+    S,
+    S_MIRRORED,
+    BOX
+};
+
+Sequence CreateGameRequest
+{
+    u8 boardWidth,
+    u8 boardHeight
+};
+
+Sequence CreateGameResponse
+{
+    u64 gameId
+};
+
+Sequence JoinRequest
+{
+    u64 gameId
+};
+
+Sequence Player
+{
+    String name,
+    u64 id
+};
+
+type PlayerList
+{
+    type(Player) dynamic_array(256)
+};
+
+Sequence JoinAccept
+{
+    u64 playerId
+};
+
+Sequence JoinReject
+{
+    u8 spare
+};
+
+Sequence PlayerUpdateNotification
+{
+    PlayerList players
+};
+
+Type ActionList
+{
+    type(Action) dynamic_array(256)
+};
+
+Sequence PlayerActionIndication
+{
+    ActionList action
+};
+
+Type Lines
+{
+    type(unsigned) width(8) dynamic_array(256)
+};
+
+Type LinesDiff
+{
+    type(unsigned) width(8) dynamic_array(256)
+};
+
+Type PieceList
+{
+    type(Piece) dynamic_array(256)
+};
+
+Type OptionalPiece
+{
+    type(Piece) optional()
+};
+
+Sequence BoardUpdateNotification
+{
+    u8 player,
+    Piece current,
+    optional hold,
+    PieceList next,
+    u8 x,
+    u8 y,
+    u8 upShift,
+    Lines affectedLines,
+    LinesDiff lineDiff
+};
+
+Sequence PushPieceIndication
+{
+    PieceList piece
+};
+
+Sequence GameStartIndication
+{
+    u64 dropRequiredTimeout
+};
+
+
+Sequence GameOverNotification
+{
+    u64 playerId
+};
+
+Choice TetrisProtocol
+{
+    CreateGameRequest,
+    CreateGameResponse,
+    JoinRequest,
+    JoinAccept,
+    JoinReject,
+    PushPieceIndication,
+    PlayerUpdateNotification,
+    PlayerActionIndication,
+    BoardUpdateNotification,
+    GameStartIndication,
+    GameOverNotification
+};
