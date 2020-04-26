@@ -19,11 +19,11 @@ struct Drop {};
 struct SoftDrop {};
 struct Lock {};
 
-template<uint8_t x, uint8_t y>
+template<int8_t x, int8_t y>
 struct TerminoCell
 {
-    static constexpr uint8_t x = x;
-    static constexpr uint8_t y = y;
+    static constexpr int8_t x = x;
+    static constexpr int8_t y = y;
 };
 
 template <typename... Cells>
@@ -39,12 +39,27 @@ struct TerminoChecker
 template <typename Cell, typename... Cells>
 struct TerminoChecker<Cell, Cells...>
 {
+    using CellCoord = std::pair<int8_t,int8_t>
     template<typename Board>
-    static bool check(const Board& board, int x, int y)
+    static bool check(const Board& pBoard, int pX, int pY, bfc::LightFn<CellCoord(CellCoord)> pTransform)
     {
-        return board.get(x+Cell::x, y+Cell::y) || TerminoChecker<Cells...>::check(board,x,y);
+        px = x+Cell::x;
+        py = y+Cell::y;
+
+        CellCoord coord{pX, pY};
+
+        if (pTransform)
+        {
+            coord = pTransform(CellCoord{pX, pY});
+        }
+
+        return board.get(coord.fist, coord.second) || TerminoChecker<Cells...>::check(board,x,y);
     }
 }
+
+TerminoChecker<
+    TerminoCell<>
+>
 
 
 } // namespace tetris
