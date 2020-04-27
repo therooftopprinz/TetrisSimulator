@@ -19,7 +19,6 @@ public:
         : mWidth(pWidth)
         , mHeight(pHeight)
         , mData(pHeight)
-        , mDataSnap(pHeight)
     {}
 
     Bitmap() = delete;
@@ -29,9 +28,12 @@ public:
         return {mWidth, mHeight};
     }
 
-    void shiftUp(uint64_t pValue)
+    Bitline shiftUp(uint64_t pValue)
     {
         mData.emplace_front(pValue);
+        auto rv = std::move(mData.back());
+        mData.pop_back();
+        return rv;
     }
 
     uint64_t line(uint8_t pLine) const
@@ -39,11 +41,12 @@ public:
         return mData[pLine];
     }
 
-    uint64_t clearLine(uin8_t pLine) const
+    void clearLine(uint8_t pLine)
     {
         auto it = mData.begin();
-        std::advance(it pLine);
+        std::advance(it, pLine);
         mData.erase(it);
+        mData.emplace_back();
     }
 
     bool get(int8_t pX, int8_t pY) const

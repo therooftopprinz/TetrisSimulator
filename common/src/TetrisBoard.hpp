@@ -16,6 +16,7 @@ public:
     void onEvent(const Hold&);
     void onEvent(const Drop&);
     void onEvent(const SoftDrop&);
+    void onEvent(const Lock&);
     Bitmap& get();
     const Patch& diff();
     void apply(const Patch&);
