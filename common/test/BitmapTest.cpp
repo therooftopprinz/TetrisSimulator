@@ -19,7 +19,7 @@ TEST_F(BitmapTest, shouldSet)
     EXPECT_TRUE(sut.get(0, 0));
 }
 
-TEST_F(BitmapTest, shouldShift)
+TEST_F(BitmapTest, shouldShiftUp)
 {
     EXPECT_FALSE(sut.get(0, 1));
     sut.set(true, 0, 0);
@@ -46,3 +46,6 @@ TEST_F(BitmapTest, shouldClearLine)
     EXPECT_EQ(0u,     sut.line(1));
     EXPECT_EQ(0x102u, sut.line(0));
 }
+
+// TEST_F(BitmapTest, shouldInsertLine)
+// TEST_F(BitmapTest, shouldReplaceLine)

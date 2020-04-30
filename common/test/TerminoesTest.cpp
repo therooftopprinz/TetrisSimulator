@@ -17,8 +17,7 @@ TEST_P(TerminoRotatorTest, 4By4)
     auto src = std::get<1>(GetParam());
     auto dstExpected = std::get<2>(GetParam());
 
-    TerminoRotator<Rot4x4> rotate{rot};
-    auto dstActual = rotate(src);
+    auto dstActual = TerminoRotator<Block4x4>::rotate(rot, src);
     EXPECT_EQ(dstExpected, dstActual);
 }
 
@@ -67,7 +66,10 @@ TEST_P(TerminoesTest, check)
     auto tester = [&bitmap, &bitmapInv, this](auto t)
     {
         using Termino = decltype(t);
-        TerminoRotator<Termino> rot{std::get<1>(GetParam())};
+        auto nrot = std::get<1>(GetParam());
+        TransformFn rot = [nrot](CellCoord pCoord){
+            return TerminoRotator<Termino>::rotate(nrot, pCoord);
+        };
         auto res = Termino::check(bitmap, 0, 0, rot);
         auto res2 = Termino::check(bitmapInv, 0, 0, rot);
         EXPECT_EQ(4u, res);

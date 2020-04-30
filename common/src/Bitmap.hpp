@@ -19,7 +19,12 @@ public:
         : mWidth(pWidth)
         , mHeight(pHeight)
         , mData(pHeight)
-    {}
+    {
+        if (pWidth >= sizeof(Bitline)*8)
+        {
+            throw std::invalid_argument("unsupported width");
+        }
+    }
 
     Bitmap() = delete;
 
@@ -28,7 +33,7 @@ public:
         return {mWidth, mHeight};
     }
 
-    Bitline shiftUp(uint64_t pValue)
+    Bitline shiftUp(Bitline pValue)
     {
         mData.emplace_front(pValue);
         auto rv = std::move(mData.back());
@@ -36,9 +41,20 @@ public:
         return rv;
     }
 
-    uint64_t line(uint8_t pLine) const
+    Bitline insertLine(uint8_t pLine, Bitline pValue)
     {
-        return mData[pLine];
+        auto it = mData.begin();
+        std::advance(it, pLine);
+        mData.emplace(it, pValue);
+
+        auto rv = std::move(mData.back());
+        mData.pop_back();
+        return rv;
+    }
+
+    void replaceLine(uint8_t pLine, Bitline pValue)
+    {
+        mData[pLine] = pValue;
     }
 
     void clearLine(uint8_t pLine)
@@ -47,6 +63,11 @@ public:
         std::advance(it, pLine);
         mData.erase(it);
         mData.emplace_back();
+    }
+
+    uint64_t line(uint8_t pLine) const
+    {
+        return mData[pLine];
     }
 
     bool get(int8_t pX, int8_t pY) const
@@ -67,10 +88,15 @@ public:
         o = (~m & o) | (m & c);
     }
 
+    void reset()
+    {
+        mData = decltype(mData)(mHeight);
+    }
+
 private: 
     uint8_t mWidth;
     uint8_t mHeight;
-    std::deque<uint64_t> mData;
+    std::deque<Bitline> mData;
 };
 
 } // namespace tetris

@@ -3,6 +3,11 @@ Type u8
     type(unsigned) width(8)
 };
 
+Type U8array
+{
+    type(u8) dynamic_array()
+}
+
 Type u64
 {
     type(unsigned) width(64)
@@ -21,7 +26,7 @@ Enumeration Action
     HARD_DROP,
     HOLD,
     ROT_CLOCK,
-    ROT_CCLOCK,
+    ROT_CCLOCK,`
     ROT_180
 };
 
@@ -77,14 +82,10 @@ Sequence PlayerUpdateNotification
     PlayerList players
 };
 
-Type ActionList
-{
-    type(Action) dynamic_array(256)
-};
-
 Sequence PlayerActionIndication
 {
-    ActionList action
+    u8 repeat,
+    Action action
 };
 
 Type Lines
@@ -92,10 +93,23 @@ Type Lines
     type(unsigned) width(8) dynamic_array(256)
 };
 
-Type LinesDiff
+Enumeration AddMode
 {
-    type(unsigned) width(8) dynamic_array(256)
+    INSERT,
+    REPLACE
+}
+
+Sequence LineToAdd
+{
+    AddMode mode,
+    u8 line,
+    u64 diff
 };
+
+Type LineToAddList
+{
+    type(LineToAdd) dynamic_array()
+}
 
 Type PieceList
 {
@@ -107,29 +121,35 @@ Type OptionalPiece
     type(Piece) optional()
 };
 
+Sequence PiecePosition
+{
+    u8 x,
+    u8 y
+}
+
+Type PiecePositionOptional
+{
+    type(PiecePosition) optional()
+}
+
 Sequence BoardUpdateNotification
 {
     u8 player,
-    Piece current,
-    optional hold,
-    PieceList next,
-    u8 x,
-    u8 y,
-    u8 upShift,
-    Lines affectedLines,
-    LinesDiff lineDiff
+    PieceList pieceToAddList,
+    PiecePositionOptional position,
+    U8array linesToRemoveList,
+    LineToAddList linesToAddList,
 };
 
 Sequence PushPieceIndication
 {
-    PieceList piece
-};
+    PieceList pieceToAddList
+}
 
 Sequence GameStartIndication
 {
     u64 dropRequiredTimeout
 };
-
 
 Sequence GameOverNotification
 {
@@ -143,10 +163,10 @@ Choice TetrisProtocol
     JoinRequest,
     JoinAccept,
     JoinReject,
-    PushPieceIndication,
     PlayerUpdateNotification,
     PlayerActionIndication,
     BoardUpdateNotification,
+    PushPieceIndication,
     GameStartIndication,
     GameOverNotification
 };

@@ -1,6 +1,8 @@
 #ifndef __TETRIS_TETRISBOARDEVENTS_HPP__
 #define __TETRIS_TETRISBOARDEVENTS_HPP__
 
+#include <cstdint>
+
 namespace tetris
 {
 
@@ -18,7 +20,6 @@ struct Hold {};
 struct Drop {};
 struct SoftDrop {};
 struct Lock {};
-
 
 } // namespace tetris
 
