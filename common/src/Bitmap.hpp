@@ -72,7 +72,7 @@ public:
 
     bool get(int8_t pX, int8_t pY) const
     {
-        if (pX<0 || pY >= mWidth || pY<0 || pY >= mHeight)
+        if (pX<0 || pX >= mWidth || pY<0 || pY >= mHeight)
         {
             return true;
         }

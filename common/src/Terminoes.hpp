@@ -36,7 +36,9 @@ struct TerminoChecker<Cell, Cells...>
     template<typename Board>
     static size_t check(const Board& pBoard, int8_t pX, int8_t pY, const TransformFn& pTransform = [](CellCoord p){return p;})
     {
-        auto coord = pTransform(CellCoord{pX + Cell::x, pY + Cell::y});
+        auto coord = pTransform(CellCoord{Cell::x, Cell::y});
+        coord.first += pX;
+        coord.second += pY;
         auto res = pBoard.get(coord.first, coord.second);
         return res + TerminoChecker<Cells...>::check(pBoard, pX, pY, pTransform);
     }

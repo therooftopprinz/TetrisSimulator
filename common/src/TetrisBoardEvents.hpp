@@ -6,6 +6,8 @@
 namespace tetris
 {
 
+namespace board
+{
 struct Move
 {
     int8_t offset;
@@ -20,6 +22,8 @@ struct Hold {};
 struct Drop {};
 struct SoftDrop {};
 struct Lock {};
+
+} // namespace board
 
 } // namespace tetris
 
