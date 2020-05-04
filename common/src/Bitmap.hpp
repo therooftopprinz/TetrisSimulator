@@ -80,12 +80,19 @@ public:
         return mData[pY] & (1 << (mWidth-1-pX));
     }
 
-    void set(bool pValue, uint8_t pX, uint8_t pY)
+    bool set(bool pValue, uint8_t pX, uint8_t pY)
     {
+        if (pX<0 || pX >= mWidth || pY<0 || pY >= mHeight)
+        {
+            return false;
+        }
+
         uint64_t m = 1 << (mWidth-1-pX);
         uint64_t c = pValue ? ~uint64_t() : 0;
         auto& o = mData[pY];
         o = (~m & o) | (m & c);
+
+        return true;
     }
 
     void reset()

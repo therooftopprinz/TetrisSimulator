@@ -20,6 +20,7 @@ struct ITetrisBoardCallbacks
     virtual void clear(std::vector<uint8_t>) = 0;
     virtual void piecePosition(CellCoord) = 0;
     virtual void newPiece(Termino) = 0;
+    virtual void hold() = 0;
 };
 
 struct TetrisBoardConfig
@@ -40,10 +41,6 @@ public:
 
     void onEvent(const board::Move& pEvent)
     {
-        auto& termino = traits::gTerminoTraitsMap[mCurrent];
-        auto& checker = std::get<2>(termino);
-        auto& rotator = std::get<3>(termino);
-        auto currentRotation = createRotator(rotator);
         int direction = pEvent.offset > 0 ? 1 : -1;
         int count = std::abs(pEvent.offset);
         int xpos = mXY.first;
@@ -52,7 +49,8 @@ public:
         for ( ; count>0 ; count--)
         {
             auto checkxpos = xpos + direction;
-            res = checker(mData, checkxpos, mXY.second, currentRotation);
+
+            res = (*mCurrentCheckerFn)(mData, checkxpos, mXY.second, mCurrentTransformer);
 
             if (0 != res)
             {
@@ -72,13 +70,52 @@ public:
         mRot = pEvent.count;
         // TODO check wall kicks;
     }
+
     void onEvent(const board::Hold&);
-    void onEvent(const board::Drop&);
-    void onEvent(const board::SoftDrop&);
+    void onEvent(const board::Drop&)
+    {
+        auto ypos = mXY.second;
+        while (true)
+        {
+            auto res = (*mCurrentCheckerFn)(mData, mXY.first, ypos-1, mCurrentTransformer);
+            if (res)
+            {
+                mXY.second = ypos;
+                break;
+            }
+            ypos -= 1;
+        }
+        lock();
+    }
+
+    void onEvent(const board::SoftDrop&)
+    {
+        auto ypos = mXY.second;
+        while (true)
+        {
+            auto res = (*mCurrentCheckerFn)(mData, mXY.first, ypos-1, mCurrentTransformer);
+            if (res)
+            {
+                mXY.second = ypos;
+                break;
+            }
+            ypos -= 1;
+        }
+        mCallbacks->piecePosition(mXY);
+    }
 
     void onEvent(const board::Lock&)
-    {  
-        
+    {
+        auto res = (*mCurrentCheckerFn)(mData, mXY.first, mXY.second-1, mCurrentTransformer);
+        if (res)
+        {
+            lock();
+        }
+        else
+        {
+            mXY.second -= 1;
+            mCallbacks->piecePosition(mXY);
+        }
     }
 
     const Bitmap& bitmap() const
@@ -101,6 +138,20 @@ public:
     }
 
 private:
+    void lock()
+    {
+        (*mCurrentSetterFn)(mData, mXY.first, mXY.second, mCurrentTransformer);
+        nextPiece();
+    }
+
+    void initializeCurrentTermino()
+    {
+        auto& termino = traits::gTerminoTraitsMap[mCurrent];
+        mCurrentCheckerFn = &std::get<2>(termino);
+        auto& rotator = std::get<3>(termino);
+        mCurrentSetterFn = &std::get<4>(termino);
+        mCurrentTransformer = createTransformerFromRotator(rotator);
+    }
 
     void nextPiece()
     {
@@ -110,12 +161,16 @@ private:
         }
 
         mCurrent = mPieceList.front();
+
+        initializeCurrentTermino();
+
+
         mCallbacks->newPiece(mCurrent);
         mPieceList.pop_front();
 
         requestPiece();
 
-        auto x = mConfig.width/2 - std::get<traits::WIDTH>(traits::gTerminoTraitsMap[mCurrent])/2;
+        auto x = std::floor(double(mConfig.width)/2 - double(std::get<traits::WIDTH>(traits::gTerminoTraitsMap[mCurrent]))/2);
         auto y = mConfig.height - std::get<traits::HEIGHT>(traits::gTerminoTraitsMap[mCurrent]);
         mXY = CellCoord{x,y};
         mCallbacks->piecePosition(mXY);
@@ -129,7 +184,7 @@ private:
         }
     }
 
-    TransformFn createRotator(traits::RotatorFn& pRotator)
+    TransformFn createTransformerFromRotator(traits::RotatorFn& pRotator)
     {
         return [this, &pRotator](CellCoord pCoord)
             {
@@ -142,8 +197,14 @@ private:
 
     CellCoord mXY;
     uint8_t mRot = 0;
+
     Termino mCurrent;
     std::optional<Termino> mHold;
+
+    traits::CheckerFn* mCurrentCheckerFn;
+    TransformFn mCurrentTransformer;
+    traits::SetterFn* mCurrentSetterFn;
+
     std::deque<Termino> mPieceList;
 
     TetrisBoardConfig mConfig;

@@ -21,26 +21,39 @@ using CellCoord = std::pair<int8_t,int8_t>;
 using TransformFn = bfc::LightFn<CellCoord(CellCoord)>;
 
 template <typename... Cells>
-struct TerminoChecker
+struct TerminoOperator
 {
-    template<typename Board>
-    static size_t check(const Board& pBoard, int8_t pX, int8_t pY, const bfc::LightFn<CellCoord(CellCoord)>&)
+    template<typename Bitmap>
+    static size_t check(const Bitmap&, int8_t, int8_t, const TransformFn&)
     {
         return 0;
+    }
+    static bool set(Bitmap&, int8_t, int8_t, const TransformFn&)
+    {
+        return true;
     }
 };
 
 template <typename Cell, typename... Cells>
-struct TerminoChecker<Cell, Cells...>
+struct TerminoOperator<Cell, Cells...>
 {
-    template<typename Board>
-    static size_t check(const Board& pBoard, int8_t pX, int8_t pY, const TransformFn& pTransform = [](CellCoord p){return p;})
+    template<typename Bitmap>
+    static size_t check(const Bitmap& pBitmap, int8_t pX, int8_t pY, const TransformFn& pTransform = [](CellCoord p){return p;})
     {
         auto coord = pTransform(CellCoord{Cell::x, Cell::y});
         coord.first += pX;
         coord.second += pY;
-        auto res = pBoard.get(coord.first, coord.second);
-        return res + TerminoChecker<Cells...>::check(pBoard, pX, pY, pTransform);
+        auto res = pBitmap.get(coord.first, coord.second);
+        return res + TerminoOperator<Cells...>::check(pBitmap, pX, pY, pTransform);
+    }
+    template<typename Bitmap>
+    static bool set(Bitmap& pBitmap, int8_t pX, int8_t pY, const TransformFn& pTransform = [](CellCoord p){return p;})
+    {
+        auto coord = pTransform(CellCoord{Cell::x, Cell::y});
+        coord.first += pX;
+        coord.second += pY;
+        auto res = pBitmap.set(true, coord.first, coord.second);
+        return res && TerminoOperator<Cells...>::set(pBitmap, pX, pY, pTransform);
     }
 };
 
@@ -50,9 +63,9 @@ struct TerminoTraits;
 template <typename T>
 struct TerminoRotator
 {
-    static CellCoord rotate(uint8_t pRotation, CellCoord pCoord)
+    static CellCoord rotate(uint8_t pCount, CellCoord pCoord)
     {
-        for (uint8_t i=0; i < pRotation; i++)
+        for (uint8_t i=0; i < pCount; i++)
         {
             auto tmp = pCoord;
             tmp.first = pCoord.second; 
@@ -64,43 +77,43 @@ struct TerminoRotator
     }
 };
 
-using TerminoI = TerminoChecker<
+using TerminoI = TerminoOperator<
     TerminoCell<0,2>,
     TerminoCell<1,2>,
     TerminoCell<2,2>,
     TerminoCell<3,2>>;
 
-using TerminoL = TerminoChecker<
+using TerminoL = TerminoOperator<
     TerminoCell<0,1>,
     TerminoCell<1,1>,
     TerminoCell<2,1>,
     TerminoCell<2,2>>;
 
-using TerminoJ = TerminoChecker<
+using TerminoJ = TerminoOperator<
     TerminoCell<0,2>,
     TerminoCell<0,1>,
     TerminoCell<1,1>,
     TerminoCell<2,1>>;
 
-using TerminoO = TerminoChecker<
+using TerminoO = TerminoOperator<
     TerminoCell<1,2>,
     TerminoCell<1,1>,
     TerminoCell<2,1>,
     TerminoCell<2,2>>;
 
-using TerminoS = TerminoChecker<
+using TerminoS = TerminoOperator<
     TerminoCell<0,1>,
     TerminoCell<1,1>,
     TerminoCell<1,2>,
     TerminoCell<2,2>>;
 
-using TerminoZ = TerminoChecker<
+using TerminoZ = TerminoOperator<
     TerminoCell<0,2>,
     TerminoCell<1,2>,
     TerminoCell<1,1>,
     TerminoCell<2,1>>;
 
-using TerminoT = TerminoChecker<
+using TerminoT = TerminoOperator<
     TerminoCell<0,1>,
     TerminoCell<1,2>,
     TerminoCell<1,1>,
@@ -154,16 +167,17 @@ namespace traits
 
     using CheckerFn = size_t (*)(const Bitmap&, int8_t, int8_t, const bfc::LightFn<CellCoord(CellCoord)>&);
     using RotatorFn = CellCoord (*)(uint8_t, CellCoord);
-    using TraitsTuple = std::tuple<uint8_t, uint8_t, CheckerFn, RotatorFn>;
+    using SetterFn = bool(*)(Bitmap&, int8_t, int8_t, const bfc::LightFn<CellCoord(CellCoord)>&);
+    using TraitsTuple = std::tuple<uint8_t, uint8_t, CheckerFn, RotatorFn, SetterFn>;
 
     inline std::unordered_map<Termino, TraitsTuple> gTerminoTraitsMap = {
-        {I, std::make_tuple(TerminoI::width, TerminoI::height, &tetris::TerminoI::check<Bitmap>, &TerminoRotator<tetris::TerminoI>::rotate)},
-        {L, std::make_tuple(TerminoL::width, TerminoL::height, &tetris::TerminoJ::check<Bitmap>, &TerminoRotator<tetris::TerminoJ>::rotate)},
-        {J, std::make_tuple(TerminoJ::width, TerminoJ::height, &tetris::TerminoL::check<Bitmap>, &TerminoRotator<tetris::TerminoL>::rotate)},
-        {O, std::make_tuple(TerminoO::width, TerminoO::height, &tetris::TerminoO::check<Bitmap>, &TerminoRotator<tetris::TerminoO>::rotate)},
-        {S, std::make_tuple(TerminoS::width, TerminoS::height, &tetris::TerminoS::check<Bitmap>, &TerminoRotator<tetris::TerminoS>::rotate)},
-        {Z, std::make_tuple(TerminoZ::width, TerminoZ::height, &tetris::TerminoZ::check<Bitmap>, &TerminoRotator<tetris::TerminoZ>::rotate)},
-        {T, std::make_tuple(TerminoT::width, TerminoT::height, &tetris::TerminoT::check<Bitmap>, &TerminoRotator<tetris::TerminoT>::rotate)}
+        {I, std::make_tuple(TerminoI::width, TerminoI::height, &tetris::TerminoI::check<Bitmap>, &TerminoRotator<tetris::TerminoI>::rotate, &tetris::TerminoI::set<Bitmap>)},
+        {L, std::make_tuple(TerminoL::width, TerminoL::height, &tetris::TerminoJ::check<Bitmap>, &TerminoRotator<tetris::TerminoJ>::rotate, &tetris::TerminoJ::set<Bitmap>)},
+        {J, std::make_tuple(TerminoJ::width, TerminoJ::height, &tetris::TerminoL::check<Bitmap>, &TerminoRotator<tetris::TerminoL>::rotate, &tetris::TerminoL::set<Bitmap>)},
+        {O, std::make_tuple(TerminoO::width, TerminoO::height, &tetris::TerminoO::check<Bitmap>, &TerminoRotator<tetris::TerminoO>::rotate, &tetris::TerminoO::set<Bitmap>)},
+        {S, std::make_tuple(TerminoS::width, TerminoS::height, &tetris::TerminoS::check<Bitmap>, &TerminoRotator<tetris::TerminoS>::rotate, &tetris::TerminoS::set<Bitmap>)},
+        {Z, std::make_tuple(TerminoZ::width, TerminoZ::height, &tetris::TerminoZ::check<Bitmap>, &TerminoRotator<tetris::TerminoZ>::rotate, &tetris::TerminoZ::set<Bitmap>)},
+        {T, std::make_tuple(TerminoT::width, TerminoT::height, &tetris::TerminoT::check<Bitmap>, &TerminoRotator<tetris::TerminoT>::rotate, &tetris::TerminoT::set<Bitmap>)}
     };
 } // namespace traits
 

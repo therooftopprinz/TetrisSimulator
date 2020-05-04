@@ -22,6 +22,7 @@ struct TetrisBoardCallbacksMock : ITetrisBoardCallbacks
     MOCK_METHOD1(clear, void(std::vector<uint8_t>));
     MOCK_METHOD1(piecePosition, void(CellCoord));
     MOCK_METHOD1(newPiece, void(Termino));
+    MOCK_METHOD0(hold, void());
 
     bool autoGeneratePieceEnabled = false;
     int generateCounter = 0;
@@ -36,7 +37,7 @@ struct TetrisBoardTest : Test
 TEST_F(TetrisBoardTest, shouldMoveClear)
 {
     EXPECT_CALL(callbacks, newPiece(Termino::I));
-    EXPECT_CALL(callbacks, piecePosition(CellCoord{3, 20})); // Initial piece
+    EXPECT_CALL(callbacks, piecePosition(CellCoord{3, 20})); // Initial piece placement
 
     EXPECT_CALL(callbacks, piecePosition(CellCoord{2, 20})); // Move -1
     EXPECT_CALL(callbacks, piecePosition(CellCoord{0, 20})); // Move -5
@@ -52,11 +53,10 @@ TEST_F(TetrisBoardTest, shouldMoveClear)
     sut.onEvent(board::Move{10});
 }
 
-
 TEST_F(TetrisBoardTest, shouldMoveRestricted)
 {
     EXPECT_CALL(callbacks, newPiece(Termino::I));
-    EXPECT_CALL(callbacks, piecePosition(CellCoord{3, 20})); // Initial piece
+    EXPECT_CALL(callbacks, piecePosition(CellCoord{3, 20})); // Initial piece placement
     EXPECT_CALL(callbacks, piecePosition(CellCoord{2, 20})); // Move -10
     EXPECT_CALL(callbacks, piecePosition(CellCoord{4, 20})); // Move 10
 
@@ -73,7 +73,7 @@ TEST_F(TetrisBoardTest, shouldMoveRestricted)
 TEST_F(TetrisBoardTest, shouldMoveExtended)
 {
     EXPECT_CALL(callbacks, newPiece(Termino::I));
-    EXPECT_CALL(callbacks, piecePosition(CellCoord{3, 20})); // Initial piece
+    EXPECT_CALL(callbacks, piecePosition(CellCoord{3, 20})); // Initial piece placement
     EXPECT_CALL(callbacks, piecePosition(CellCoord{-2, 20})); // Move -10
     EXPECT_CALL(callbacks, piecePosition(CellCoord{7, 20})); // Move 10
 
@@ -85,10 +85,58 @@ TEST_F(TetrisBoardTest, shouldMoveExtended)
     sut.onEvent(board::Move{10});
 }
 
+TEST_F(TetrisBoardTest, shouldLockDrop)
+{
+    EXPECT_CALL(callbacks, newPiece(Termino::I));
+    EXPECT_CALL(callbacks, piecePosition(CellCoord{3, 20})); // Initial piece placement
+    EXPECT_CALL(callbacks, piecePosition(CellCoord{3, 19}));
+
+    callbacks.autoGeneratePieceEnabled = true;
+    sut.restart();
+
+    sut.onEvent(board::Lock{});
+}
+
+TEST_F(TetrisBoardTest, shouldSoftDrop)
+{
+    EXPECT_CALL(callbacks, newPiece(Termino::I));
+    EXPECT_CALL(callbacks, piecePosition(CellCoord{3, 20})); // Initial piece placement
+    EXPECT_CALL(callbacks, piecePosition(CellCoord{3, -2}));
+
+    callbacks.autoGeneratePieceEnabled = true;
+    sut.restart();
+
+    sut.onEvent(board::SoftDrop{});
+}
+
+TEST_F(TetrisBoardTest, shouldLockSet)
+{
+    InSequence seq;
+    EXPECT_CALL(callbacks, newPiece(Termino::I));
+    EXPECT_CALL(callbacks, piecePosition(CellCoord{3, 20})); // Initial piece placement
+    EXPECT_CALL(callbacks, piecePosition(CellCoord{3, -2}));
+    EXPECT_CALL(callbacks, newPiece(Termino::L));
+    EXPECT_CALL(callbacks, piecePosition(CellCoord{3, 21})); // Second piece placement
+    EXPECT_CALL(callbacks, piecePosition(CellCoord{3, 0}));
+    EXPECT_CALL(callbacks, newPiece(Termino::J));
+    EXPECT_CALL(callbacks, piecePosition(CellCoord{3, 21})); // Third piece placement
+
+    callbacks.autoGeneratePieceEnabled = true;
+    sut.restart();
+
+    sut.onEvent(board::SoftDrop{});
+    sut.onEvent(board::Lock{});
+    sut.onEvent(board::SoftDrop{});
+    sut.onEvent(board::Lock{});
+
+    auto& bitmap = sut.bitmap();
+
+    EXPECT_EQ(0b001000000u, bitmap.line(2));
+    EXPECT_EQ(0b001110000u, bitmap.line(1));
+    EXPECT_EQ(0b001111000u, bitmap.line(0));
+}
 
 
-// TODO: TEST_F(TetrisBoardTest, shouldLock)
-// TODO: TEST_F(TetrisBoardTest, shouldSoftDrop)
 // TODO: TEST_F(TetrisBoardTest, shouldHardDrop)
 // TODO: TEST_F(TetrisBoardTest, shoudClearLine)
 // TODO: TEST_F(TetrisBoardTest, shouldRotate)
