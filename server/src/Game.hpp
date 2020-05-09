@@ -10,6 +10,7 @@
 #include <interface/protocol.hpp>
 
 #include <common/TetrisBoard.hpp>
+#include <ITetrisSimulator.hpp>
 
 namespace tetris
 {
@@ -31,13 +32,15 @@ private:
 class Game
 {
 public:
-    Game(const GameConfig& pConfig)
+    Game(const GameConfig& pConfig, IExecutor& pExecutor)
         : mConfig(pConfig)
+        , mExecutor(pExecutor)
     {}
 
 private:
     GameConfig mConfig;
     std::map<uint32_t, Player> mPlayers;
+    IExecutor& mExecutor;
 };
 
 } // namespace tetris

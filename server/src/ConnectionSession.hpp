@@ -5,7 +5,7 @@
 #include <stdexcept>
 
 #include <sys/socket.h>
-#include <netinet/in.h> 
+#include <netinet/in.h>
 
 #include <interface/protocol.hpp>
 
@@ -22,6 +22,28 @@ public:
         : mFd(pFd)
         , mTetrisSim(pTetrisSim)
     {
+    }
+
+    ~ConnectionSession()
+    {
+        reset();
+    }
+
+    ConnectionSession(const ConnectionSession&) = delete;
+
+    ConnectionSession& operator=(const ConnectionSession&) = delete;
+
+    void reset()
+    {
+        if (-1 == mFd)
+        {
+            return;
+        }
+
+        Logless("ConnectionSession[fd=_]: reset: closing socket...", mFd);
+
+        close(mFd);
+        mFd = -1;
     }
 
     void handleRead()
@@ -68,8 +90,6 @@ public:
 
     void decodeMessage()
     {
-        
-
         TetrisProtocol message;
         cum::per_codec_ctx context(mBuff, mBuffIdx);
         decode_per(message, context);
@@ -77,7 +97,7 @@ public:
         std::string stred;
         str("root", message, stred, true);
 
-        Logless("ConnectionSession[fd=_] : Receive raw=_ decoded=_", mFd, BufferLog(mBuffIdx, mBuff), stred.c_str());
+        Logless("ConnectionSession[fd=_]: Receive raw=_ decoded=_", mFd, BufferLog(mBuffIdx, mBuff), stred.c_str());
 
         std::visit([this](auto& message)
             {
@@ -95,7 +115,7 @@ public:
         TetrisProtocol message;
         if (IDLE != mSessionMode)
         {
-            message = CreateGameRequestReject{};
+            message = CreateGameReject{};
         }
         else
         {
@@ -104,10 +124,10 @@ public:
             config.height = pMsg.boardHeight;
             config.width = pMsg.boardWidth;
             config.lockingTimeout = pMsg.lockingTimeoutMs;
-            auto mGame = std::make_shared<Game>(config);
-            message = CreateGameRequestAccept{};
-            auto& createGameRequestAccept = std::get<CreateGameRequestAccept>(message);
-            createGameRequestAccept.gameId = mTetrisSim.createGame(mGame);
+            auto mGame = std::make_shared<Game>(config, mTetrisSim);
+            message = CreateGameAccept{};
+            auto& createGameAccept = std::get<CreateGameAccept>(message);
+            createGameAccept.gameId = mTetrisSim.createGame(mGame);
         }
 
         send(message);
@@ -118,10 +138,12 @@ public:
         auto game = mTetrisSim.getGame(pMsg.gameId);
     }
 
+private:
+
     void send(TetrisProtocol& pMessage)
     {
         std::byte buffer[512];
-        auto& msgSize = *(new (buffer) uint16_t(0)); 
+        auto& msgSize = *(new (buffer) uint16_t(0));
         cum::per_codec_ctx context(buffer + 2, sizeof(buffer) -2);
         encode_per(pMessage, context);
 
@@ -129,7 +151,7 @@ public:
 
         std::string stred;
         str("root", pMessage, stred, true);
-        Logless("ConnectionSession[fd=_] : send : raw=_ encoded=_", mFd, BufferLog(msgSize, buffer), stred.c_str());
+        Logless("ConnectionSession[fd=_]: send: raw=_ encoded=_", mFd, BufferLog(msgSize, buffer), stred.c_str());
 
         auto res = ::send(mFd, buffer, msgSize+2, 0);
         if (-1 == res)
@@ -138,7 +160,6 @@ public:
         }
     }
 
-private:
     std::byte mBuff[512];
     uint16_t mBuffIdx = 0;
     enum ReadState {WAIT_HEADER, WAIT_REMAINING};

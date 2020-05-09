@@ -8,9 +8,10 @@
 #include <memory>
 
 #include <sys/socket.h>
-#include <netinet/in.h> 
+#include <netinet/in.h>
 #include <arpa/inet.h>
 
+#include <bfc/ThreadPool.hpp>
 #include <bfc/EpollReactor.hpp>
 #include <logless/Logger.hpp>
 
@@ -53,7 +54,7 @@ public:
 
         char loc[24];
         inet_ntop(AF_INET, &addr.sin_addr.s_addr, loc, sizeof(loc));
-        Logless("TetisSimulator : binding _:_", loc, pCfg.port);
+        Logless("TetisSimulator: binding _:_", loc, pCfg.port);
 
         res = bind(mServerFd, (sockaddr*)&addr, sizeof(addr));
 
@@ -69,9 +70,17 @@ public:
             throw std::runtime_error(strerror(errno));
         }
 
-        mReactor.addHandler(mServerFd, [this](){
+        if (!mReactor.addHandler(mServerFd, [this](){
                 handleServerRead();
-            });
+            }))
+        {
+            throw std::runtime_error("TetisSimulator: Failed to register server to EpollReactor.");
+        }
+    }
+
+    ~TetrisSimulator()
+    {
+        close(mServerFd);
     }
 
     void handleServerRead()
@@ -88,25 +97,33 @@ public:
 
         char loc[24];
         inet_ntop(AF_INET, &addr.sin_addr.s_addr, loc, sizeof(loc));
-        Logless("TetisSimulator : connected client fd=_ address=_:_", res, loc, ntohs(addr.sin_port));
-        
+        Logless("TetisSimulator: connected client fd=_ address=_:_", res, loc, ntohs(addr.sin_port));
+
         std::unique_lock<std::mutex> lg(mConnectionsMutex);
-        auto empRes = mConnections.emplace(res, ConnectionSession(res, *this));
+        auto empRes = mConnections.emplace(std::piecewise_construct, std::forward_as_tuple(res), std::forward_as_tuple(res, *this));
         lg.unlock();
 
         auto& connection = empRes.first->second;
-        mReactor.addHandler(res, [&connection](){
+
+        if (!mReactor.addHandler(res, [&connection](){
                 connection.handleRead();
-            });
+            }))
+        {
+            Logless("TetisSimulator: Failed to register connection fd=_ to EpollReactor, errno=\"_\"", res, strerror(errno));
+            onDisconnect(res);
+        }
     }
 
     void onDisconnect(int pFd)
     {
-        Logless("TetisSimulator : Disconnected client fd=_", pFd);
+        Logless("TetisSimulator: Disconnected client fd=_", pFd);
 
         std::unique_lock<std::mutex> lg(mConnectionsMutex);
+        if (!mReactor.removeHandler(pFd))
+        {
+            Logless("TetisSimulator: Failed to delete client fd=_ from EpollReactor, errno=\"_\"", pFd, strerror(errno));
+        }
         mConnections.erase(pFd);
-        mReactor.removeHandler(pFd);
     }
 
     void run()
@@ -134,6 +151,11 @@ public:
         return id;
     }
 
+    void execute(const bfc::LightFn<void()>& pFn)
+    {
+        mTp.execute(pFn);
+    }
+
 private:
     std::map<int, ConnectionSession> mConnections;
     std::mutex mConnectionsMutex;
@@ -142,8 +164,10 @@ private:
     int mGameIdCtr = 0;
     std::mutex mGamesMutex;
 
-    int mServerFd;
     bfc::EpollReactor mReactor;
+    bfc::ThreadPool<> mTp;
+
+    int mServerFd;
 };
 
 } // namespace tetris

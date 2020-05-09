@@ -3,17 +3,31 @@
 
 #include <memory>
 
-class Game;
+#include <bfc/FixedFunctionObject.hpp>
 
 namespace tetris
 {
 
-struct ITetrisSimulator
+class Game;
+
+struct IConnectionCallback
 {
     virtual void onDisconnect(int pFd) = 0;
+};
+
+struct IGameManager
+{
     virtual std::shared_ptr<Game> getGame(uint32_t pGameId) = 0;
     virtual int createGame(std::shared_ptr<Game> pGame) = 0;
 };
+
+struct IExecutor
+{
+    virtual void execute(const bfc::LightFn<void()>& pFn) = 0;
+};
+
+struct ITetrisSimulator : IGameManager , IExecutor, IConnectionCallback
+{};
 
 } // namespace tetris
 
