@@ -21,12 +21,7 @@ struct IGameManager
     virtual int createGame(std::shared_ptr<Game> pGame) = 0;
 };
 
-struct IExecutor
-{
-    virtual void execute(const bfc::LightFn<void()>& pFn) = 0;
-};
-
-struct ITetrisSimulator : IGameManager , IExecutor, IConnectionCallback
+struct ITetrisSimulator : IGameManager, IConnectionCallback
 {};
 
 } // namespace tetris

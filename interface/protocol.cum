@@ -43,8 +43,8 @@ Enumeration Action
 Enumeration Piece
 {
     I,
-    J,
     L,
+    J,
     O,
     S,
     Z,
@@ -77,7 +77,7 @@ Sequence CreateGameAccept
 
 Sequence GameStartIndication
 {
-    u64 dropRequiredTimeout
+    u8 spare
 };
 
 Type PieceList

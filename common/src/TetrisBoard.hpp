@@ -39,7 +39,49 @@ public:
         , mData(pConfig.width, pConfig.height)
     {}
 
-    void onEvent(const board::Move& pEvent)
+    template <typename T>
+    void onEvent(const T& pEvent)
+    {
+        if (NONE == mCurrent)
+        {
+            return;
+        }
+        doEvent(pEvent);
+    }
+
+    void onEvent(const board::TerminoAvailable&)
+    {
+        if (NONE == mCurrent)
+        {
+            nextPiece();
+        }
+        else
+        {
+            requestPiece();
+        }
+    }
+
+    const Bitmap& bitmap() const
+    {
+        return mData;
+    }
+    
+    Bitmap& bitmap()
+    {
+        return mData;
+    }
+
+    bool isGameOver();
+    void restart()
+    {
+        mPieceList.clear();
+        mData.reset();
+
+        nextPiece();
+    }
+
+private:
+    void doEvent(const board::Move& pEvent)
     {
         int direction = pEvent.offset > 0 ? 1 : -1;
         int count = std::abs(pEvent.offset);
@@ -64,15 +106,15 @@ public:
         mCallbacks->piecePosition(mXY);
     }
 
-    void onEvent(const board::Rotate& pEvent)
+    void doEvent(const board::Rotate& pEvent)
     {
         // auto origRot = mRot;
         mRot = pEvent.count;
         // TODO check wall kicks;
     }
 
-    void onEvent(const board::Hold&);
-    void onEvent(const board::Drop&)
+    void doEvent(const board::Hold&);
+    void doEvent(const board::Drop&)
     {
         auto ypos = mXY.second;
         while (true)
@@ -88,7 +130,7 @@ public:
         lock();
     }
 
-    void onEvent(const board::SoftDrop&)
+    void doEvent(const board::SoftDrop&)
     {
         auto ypos = mXY.second;
         while (true)
@@ -96,6 +138,11 @@ public:
             auto res = (*mCurrentCheckerFn)(mData, mXY.first, ypos-1, mCurrentTransformer);
             if (res)
             {
+                if (ypos == mXY.second)
+                {
+                    lock();
+                    return;
+                }
                 mXY.second = ypos;
                 break;
             }
@@ -104,7 +151,7 @@ public:
         mCallbacks->piecePosition(mXY);
     }
 
-    void onEvent(const board::Lock&)
+    void doEvent(const board::Lock&)
     {
         auto res = (*mCurrentCheckerFn)(mData, mXY.first, mXY.second-1, mCurrentTransformer);
         if (res)
@@ -118,34 +165,15 @@ public:
         }
     }
 
-    const Bitmap& bitmap() const
-    {
-        return mData;
-    }
-    
-    Bitmap& bitmap()
-    {
-        return mData;
-    }
-
-    bool isGameOver();
-    void restart()
-    {
-        mPieceList.clear();
-        mData.reset();
-
-        nextPiece();
-    }
-
-private:
     void lock()
     {
         (*mCurrentSetterFn)(mData, mXY.first, mXY.second, mCurrentTransformer);
         nextPiece();
     }
 
-    void initializeCurrentTermino()
+    void initializeCurrentTermino(Termino pTerm)
     {
+        mCurrent = pTerm;
         auto& termino = traits::gTerminoTraitsMap[mCurrent];
         mCurrentCheckerFn = &std::get<2>(termino);
         auto& rotator = std::get<3>(termino);
@@ -155,15 +183,17 @@ private:
 
     void nextPiece()
     {
+        mCurrent = NONE;
+
         if (!mPieceList.size())
         {
-            requestPiece();
+            if (!requestPiece())
+            {
+                return;
+            }
         }
 
-        mCurrent = mPieceList.front();
-
-        initializeCurrentTermino();
-
+        initializeCurrentTermino(mPieceList.front());
 
         mCallbacks->newPiece(mCurrent);
         mPieceList.pop_front();
@@ -176,12 +206,18 @@ private:
         mCallbacks->piecePosition(mXY);
     }
 
-    void requestPiece()
+    bool requestPiece()
     {
         while (5 > mPieceList.size())
         {
-            mPieceList.push_back(mCallbacks->generate());
+            auto termino = mCallbacks->generate();
+            if (NONE == termino)
+            {
+                return false;
+            }
+            mPieceList.emplace_back(termino);
         }
+        return true;
     }
 
     TransformFn createTransformerFromRotator(traits::RotatorFn& pRotator)
@@ -195,15 +231,15 @@ private:
     uint8_t mWidth;
     uint8_t mHeight;
 
-    CellCoord mXY;
+    CellCoord mXY = {};
     uint8_t mRot = 0;
 
-    Termino mCurrent;
+    Termino mCurrent = NONE;
     std::optional<Termino> mHold;
 
-    traits::CheckerFn* mCurrentCheckerFn;
+    traits::CheckerFn* mCurrentCheckerFn = nullptr;
     TransformFn mCurrentTransformer;
-    traits::SetterFn* mCurrentSetterFn;
+    traits::SetterFn* mCurrentSetterFn = nullptr;
 
     std::deque<Termino> mPieceList;
 

@@ -13,6 +13,8 @@
 
 #include <bfc/ThreadPool.hpp>
 #include <bfc/EpollReactor.hpp>
+#include <bfc/Timer.hpp>
+
 #include <logless/Logger.hpp>
 
 #include <common/TetrisBoard.hpp>
@@ -151,11 +153,6 @@ public:
         return id;
     }
 
-    void execute(const bfc::LightFn<void()>& pFn)
-    {
-        mTp.execute(pFn);
-    }
-
 private:
     std::map<int, ConnectionSession> mConnections;
     std::mutex mConnectionsMutex;
@@ -165,7 +162,6 @@ private:
     std::mutex mGamesMutex;
 
     bfc::EpollReactor mReactor;
-    bfc::ThreadPool<> mTp;
 
     int mServerFd;
 };

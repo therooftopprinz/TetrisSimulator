@@ -80,13 +80,10 @@ public:
                 return cmdCreate(std::move(pArgs));
             });
         mCmdMan.addCommand("join", [this](bfc::ArgsMap&& pArgs) -> std::string {
-                auto id = pArgs.argAs<int>("id");
-                if (!id)
-                {
-                    return "no id";
-                }
-                join(*id);
-                return "joining...";
+                return cmdJoin(std::move(pArgs));
+            });
+        mCmdMan.addCommand("start", [this](bfc::ArgsMap&& pArgs) -> std::string {
+                return cmdStart(std::move(pArgs));
             });
 
         mKeyHandler = [this](char key) -> void{
@@ -150,7 +147,8 @@ private:
         std::string stred;
         str("root", message, stred, true);
 
-        Logless("ConnectionSession[fd=_] : Receive raw=_ decoded=_", mFd, BufferLog(mBuffIdx, mBuff), stred.c_str());
+        Logless("TetrisClient: Receive raw=_ decoded=_", mFd, BufferLog(mBuffIdx, mBuff), stred.c_str());
+        Logger::getInstance().flush();
 
         std::visit([this](auto& pMsg){
                 onMsg(pMsg);
@@ -167,35 +165,61 @@ private:
     {
         if (GM_INIT != mState)
         {
-            consoleLog("[client]: Unexpected CreateGameAccept from server!");
-            return;
+            throw std::runtime_error("server-client expectation mismatch!");
         }
 
+        mState = GM_ACTIVE;
         consoleLog("[client]: Game created! id=", pMsg.gameId);
     }
 
     void onMsg(CreateGameReject& pMsg)
     {
+        if (GM_INIT != mState)
+        {
+            throw std::runtime_error("server-client expectation mismatch!");
+        }
+
+        mState = IDLE;
         mGm.reset();
     }
 
     void onMsg(JoinAccept& pMsg)
     {
+        if (PLAYER_INIT != mState)
+        {
+            throw std::runtime_error("server-client expectation mismatch!");
+        }
 
+        mState = PLAYER_ACTIVE;
+        consoleLog("[client]: Player joined id=", pMsg.playerId, "!");
     }
 
     void onMsg(JoinReject& pMsg)
     {
+        if (PLAYER_INIT != mState)
+        {
+            throw std::runtime_error("server-client expectation mismatch!");
+        }
 
+        mState = IDLE;
+        mGm.reset();
     }
 
-    void join(int pId)
+    std::string cmdStart(bfc::ArgsMap&&)
     {
-        TetrisProtocol message = JoinRequest();
-        auto& joinRequest = std::get<JoinRequest>(message);
-        joinRequest.gameId = pId;
+        if (GM_ACTIVE != mState)
+        {
+            return "Can't start game!";
+        }
 
-        send(message);
+        if (mGm->start())
+        {
+            return "Started!";
+        }
+        else
+        {
+            return "Already started!";
+        }
     }
 
     std::string cmdCreate(bfc::ArgsMap&& pArgs)
@@ -209,6 +233,33 @@ private:
         auto& createGameRequest = std::get<CreateGameRequest>(message);
         createGameRequest.boardHeight = 24;
         createGameRequest.boardWidth = 10;
+        createGameRequest.lockingTimeoutMs = 1000;
+        createGameRequest.targetChangeTimeoutMs = 2000;
+
+        auto width = pArgs.argAs<int>("width");
+        auto height = pArgs.argAs<int>("height");
+        auto lockTimeout = pArgs.argAs<int>("lock");
+        auto targetTimeout = pArgs.argAs<int>("target");
+
+        if (width)
+        {
+            createGameRequest.boardWidth = *width;
+        }
+
+        if (height)
+        {
+            createGameRequest.boardHeight = *height;
+        }
+
+        if (lockTimeout)
+        {
+            createGameRequest.lockingTimeoutMs = *lockTimeout;
+        }
+
+        if (targetTimeout)
+        {
+            createGameRequest.targetChangeTimeoutMs = *targetTimeout;
+        }
 
         send(message);
         mState = GM_INIT;
@@ -218,14 +269,41 @@ private:
         return "Creating game...";
     }
 
+    std::string cmdJoin(bfc::ArgsMap&& pArgs)
+    {
+        if (IDLE != mState)
+        {
+            return "Can't join game!";
+        }
+
+        auto id = pArgs.argAs<int>("id");
+        if (!id)
+        {
+            return "id not provided.";
+        }
+
+        TetrisProtocol message;
+        message = JoinRequest();
+        auto& joinRequest = std::get<JoinRequest>(message);
+        joinRequest.gameId = *id;
+        send(message);
+
+        mState = PLAYER_INIT;
+        return "Joining...";
+    }
+
     void send(TetrisProtocol& pMessage)
     {
         std::byte buffer[512];
         auto& msgSize = *(new (buffer) uint16_t(0));
-        cum::per_codec_ctx context(buffer + 2, sizeof(buffer) -2);
+        cum::per_codec_ctx context(buffer+2, sizeof(buffer)-2);
         encode_per(pMessage, context);
 
         msgSize = sizeof(buffer) - context.size();
+
+        std::string stred;
+        str("root", pMessage, stred, true);
+        Logless("TetrisClient: send: raw=_ encoded=_", mFd, BufferLog(msgSize, buffer), stred.c_str());
 
         auto res = ::send(mFd, buffer, msgSize+2, 0);
         if (-1 == res)
@@ -346,7 +424,7 @@ private:
     size_t mConsoleInputBufferIdx = 0;
     int mConsolseWaitChar = 0;
 
-    enum ClientState {IDLE, GM_INIT, GM_ACTIVE, PLAYER};
+    enum ClientState {IDLE, GM_INIT, GM_ACTIVE, PLAYER_INIT, PLAYER_ACTIVE};
     ClientState mState = IDLE;
 
     bfc::CommandManager mCmdMan;
