@@ -102,13 +102,13 @@ public:
         Logless("TetisSimulator: connected client fd=_ address=_:_", res, loc, ntohs(addr.sin_port));
 
         std::unique_lock<std::mutex> lg(mConnectionsMutex);
-        auto empRes = mConnections.emplace(std::piecewise_construct, std::forward_as_tuple(res), std::forward_as_tuple(res, *this));
+        auto empRes = mConnections.emplace(res, std::make_shared<ConnectionSession>(res, *this));
         lg.unlock();
 
-        auto& connection = empRes.first->second;
+        auto connection = empRes.first->second;
 
-        if (!mReactor.addHandler(res, [&connection](){
-                connection.handleRead();
+        if (!mReactor.addHandler(res, [connection](){
+                connection->handleRead();
             }))
         {
             Logless("TetisSimulator: Failed to register connection fd=_ to EpollReactor, errno=\"_\"", res, strerror(errno));
@@ -154,7 +154,7 @@ public:
     }
 
 private:
-    std::map<int, ConnectionSession> mConnections;
+    std::map<int, std::shared_ptr<ConnectionSession>> mConnections;
     std::mutex mConnectionsMutex;
 
     std::map<uint32_t, std::shared_ptr<Game>> mGames;

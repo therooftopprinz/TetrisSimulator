@@ -14,13 +14,15 @@
 namespace tetris
 {
 
-struct ITetrisBoardCallbacks
+struct TetrisBoardCallbacks
 {
-    virtual Termino generate() = 0;
-    virtual void clear(std::vector<uint8_t>) = 0;
-    virtual void piecePosition(CellCoord) = 0;
-    virtual void newPiece(Termino) = 0;
-    virtual void hold() = 0;
+    bfc::LightFn<Termino()> generate;
+    bfc::LightFn<void(std::vector<uint8_t>)> clear;
+    bfc::LightFn<void(CellCoord)> piecePosition;
+    bfc::LightFn<void(Termino)> placePiece;
+    bfc::LightFn<void(std::vector<Termino>)> piecesAdded;
+    bfc::LightFn<void()> hold;
+    bfc::LightFn<void()> commit;
 };
 
 struct TetrisBoardConfig
@@ -33,7 +35,7 @@ class TetrisBoard
 {
 public:
 
-    TetrisBoard(const TetrisBoardConfig& pConfig, ITetrisBoardCallbacks* pCallbacks)
+    TetrisBoard(const TetrisBoardConfig& pConfig, TetrisBoardCallbacks& pCallbacks)
         : mConfig(pConfig)
         , mCallbacks(pCallbacks)
         , mData(pConfig.width, pConfig.height)
@@ -47,6 +49,7 @@ public:
             return;
         }
         doEvent(pEvent);
+        mCallbacks.commit();
     }
 
     void onEvent(const board::TerminoAvailable&)
@@ -59,6 +62,7 @@ public:
         {
             requestPiece();
         }
+        mCallbacks.commit();
     }
 
     const Bitmap& bitmap() const
@@ -71,13 +75,18 @@ public:
         return mData;
     }
 
-    bool isGameOver();
-    void restart()
+    bool isGameOver()
+    {
+        return mGameOver;
+    }
+    void reset()
     {
         mPieceList.clear();
         mData.reset();
+        mGameOver = false;
 
         nextPiece();
+        mCallbacks.commit();
     }
 
 private:
@@ -103,7 +112,7 @@ private:
         }
 
         mXY.first = xpos;
-        mCallbacks->piecePosition(mXY);
+        mCallbacks.piecePosition(mXY);
     }
 
     void doEvent(const board::Rotate& pEvent)
@@ -148,7 +157,7 @@ private:
             }
             ypos -= 1;
         }
-        mCallbacks->piecePosition(mXY);
+        mCallbacks.piecePosition(mXY);
     }
 
     void doEvent(const board::Lock&)
@@ -161,7 +170,7 @@ private:
         else
         {
             mXY.second -= 1;
-            mCallbacks->piecePosition(mXY);
+            mCallbacks.piecePosition(mXY);
         }
     }
 
@@ -195,7 +204,7 @@ private:
 
         initializeCurrentTermino(mPieceList.front());
 
-        mCallbacks->newPiece(mCurrent);
+        mCallbacks.placePiece(mCurrent);
         mPieceList.pop_front();
 
         requestPiece();
@@ -203,21 +212,25 @@ private:
         auto x = std::floor(double(mConfig.width)/2 - double(std::get<traits::WIDTH>(traits::gTerminoTraitsMap[mCurrent]))/2);
         auto y = mConfig.height - std::get<traits::HEIGHT>(traits::gTerminoTraitsMap[mCurrent]);
         mXY = CellCoord{x,y};
-        mCallbacks->piecePosition(mXY);
+        mCallbacks.piecePosition(mXY);
     }
 
     bool requestPiece()
     {
+        std::vector<Termino> pieces;
         while (5 > mPieceList.size())
         {
-            auto termino = mCallbacks->generate();
+            auto termino = mCallbacks.generate();
             if (NONE == termino)
             {
-                return false;
+                break;
             }
             mPieceList.emplace_back(termino);
+            pieces.emplace_back(termino);
         }
-        return true;
+
+        mCallbacks.piecesAdded(std::move(pieces));
+        return mPieceList.size();
     }
 
     TransformFn createTransformerFromRotator(traits::RotatorFn& pRotator)
@@ -244,8 +257,9 @@ private:
     std::deque<Termino> mPieceList;
 
     TetrisBoardConfig mConfig;
-    ITetrisBoardCallbacks* mCallbacks;
+    TetrisBoardCallbacks& mCallbacks;
     Bitmap mData;
+    bool mGameOver;
 };
 
 } // namespace tetris

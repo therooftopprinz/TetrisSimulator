@@ -1,0 +1,8 @@
+[x] player lock down
+    [x] Fix timer issue
+    [x] Lockdown restart while not gameover
+[ ] client basic player display and control
+    [ ] client control updates
+    [ ] client display updates
+[ ] board line updates
+[ ] target change

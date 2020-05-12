@@ -3,6 +3,7 @@
 
 #include <cstring>
 #include <stdexcept>
+#include <memory>
 
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -21,7 +22,7 @@
 namespace tetris
 {
 
-class ConnectionSession : public IConnectionSession
+class ConnectionSession : public IConnectionSession, public std::enable_shared_from_this<ConnectionSession>
 {
 public:
     ConnectionSession(int pFd, ITetrisSimulator& pTetrisSim)
@@ -91,7 +92,8 @@ public:
 
         if (mExpectedReadSize == mBuffIdx)
         {
-            auto raw = mMp.allocate0(mBuffIdx);
+            // auto raw = mMp.allocate0(mBuffIdx);
+            auto raw = new std::byte[mBuffIdx];
             std::memcpy(raw, mBuff, mBuffIdx);
             mTp.execute([this, raw, size = mBuffIdx]() mutable {
                     decodeMessage(raw, size);
@@ -107,25 +109,35 @@ public:
         cum::per_codec_ctx context(pRaw, pSize);
         decode_per(message, context);
 
-        mMp.free(pRaw, pSize);
-
         std::string stred;
         str("root", message, stred, true);
 
-        Logless("ConnectionSession[fd=_]: Receive raw=_ decoded=_", mFd, BufferLog(mBuffIdx, mBuff), stred.c_str());
+        Logless("ConnectionSession[fd=_]: receive: raw=_ decoded=_", mFd, BufferLog(pSize, pRaw), stred.c_str());
+        // mMp.free(pRaw, pSize);
+        delete[] pRaw;
 
-        std::visit([this](auto& message){
-                onMsg(message);
+
+        std::visit([this, &message](auto& pMessage){
+                onMsg(pMessage, message);
             }, message);
     }
 
     template <typename T>
-    void onMsg(T& pMsg)
+    void onMsg(T& pMsg, TetrisProtocol& pParent)
     {
         if (mGame)
         {
-            mGame->onMsg(pMsg);
+            mGame->onMsg(pParent);
         }
+        else
+        {
+            onMsg(pMsg);
+        }
+    }
+
+    template <typename T>
+    void onMsg(T&)
+    {
     }
 
     void onMsg(CreateGameRequest& pMsg)
@@ -142,7 +154,7 @@ public:
             config.height = pMsg.boardHeight;
             config.width = pMsg.boardWidth;
             config.lockingTimeout = pMsg.lockingTimeoutMs;
-            mGame = std::make_shared<Game>(config, *this, mTp, mTimer);
+            mGame = std::make_shared<Game>(config, shared_from_this(), mTp, mTimer);
             message = CreateGameAccept{};
             auto& createGameAccept = std::get<CreateGameAccept>(message);
             createGameAccept.gameId = mTetrisSim.createGame(mGame);
@@ -169,25 +181,28 @@ public:
         message = JoinAccept{};
         auto& joinAccept = std::get<JoinAccept>(message);
 
-        joinAccept.playerId = mGame->join(*this);
-
+        joinAccept.playerId = mGame->join(shared_from_this());
+        joinAccept.boardHeight = mGame->getBoardConfig().height;
+        joinAccept.boardWidth = mGame->getBoardConfig().width;
         send(message);
     }
 
 private:
 
+
     void send(TetrisProtocol& pMessage)
     {
         std::byte buffer[512];
         auto& msgSize = *(new (buffer) uint16_t(0));
-        cum::per_codec_ctx context(buffer+2, sizeof(buffer)-2);
+        cum::per_codec_ctx context(buffer+sizeof(msgSize), sizeof(buffer)-sizeof(msgSize));
         encode_per(pMessage, context);
 
-        msgSize = sizeof(buffer) - context.size();
+        msgSize = sizeof(buffer)-context.size()-2;
 
         std::string stred;
         str("root", pMessage, stred, true);
         Logless("ConnectionSession[fd=_]: send: raw=_ encoded=_", mFd, BufferLog(msgSize, buffer), stred.c_str());
+        Logger::getInstance().flush();
 
         auto res = ::send(mFd, buffer, msgSize+2, 0);
         if (-1 == res)
@@ -195,7 +210,6 @@ private:
             throw std::runtime_error(strerror(errno));
         }
     }
-
     std::byte mBuff[512];
     uint16_t mBuffIdx = 0;
     enum ReadState {WAIT_HEADER, WAIT_REMAINING};

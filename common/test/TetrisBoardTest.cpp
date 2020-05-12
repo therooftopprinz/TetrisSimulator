@@ -7,7 +7,7 @@
 using namespace tetris;
 using namespace testing;
 
-struct TetrisBoardCallbacksMock : ITetrisBoardCallbacks
+struct TetrisBoardCallbacksMock
 {
     Termino generate()
     {
@@ -30,8 +30,17 @@ struct TetrisBoardCallbacksMock : ITetrisBoardCallbacks
 
 struct TetrisBoardTest : Test
 {
+    TetrisBoardTest()
+    {
+        rawCallbacks.generate = [this]() -> Termino {return callbacks.generate();};
+        rawCallbacks.clear = [this](std::vector<uint8_t> pLines) {return callbacks.clear(std::move(pLines));};
+        rawCallbacks.piecePosition = [this](CellCoord pCoord) {return callbacks.piecePosition(pCoord);};
+        rawCallbacks.newPiece = [this](Termino pTermino) {return callbacks.newPiece(pTermino);};
+        rawCallbacks.hold = [this]() {return callbacks.hold();};
+    }
     TetrisBoardCallbacksMock callbacks;
-    TetrisBoard sut = TetrisBoard(TetrisBoardConfig{10,24}, &callbacks);
+    TetrisBoardCallbacks rawCallbacks;
+    TetrisBoard sut = TetrisBoard(TetrisBoardConfig{10,24}, rawCallbacks);
 };
 
 TEST_F(TetrisBoardTest, shouldMoveClear)

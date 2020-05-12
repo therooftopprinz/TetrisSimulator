@@ -1,5 +1,7 @@
 // Type:  ('u8', {'type': 'unsigned'})
 // Type:  ('u8', {'width': '8'})
+// Type:  ('i8', {'type': 'signed'})
+// Type:  ('i8', {'width': '8'})
 // Type:  ('OptionalU8', {'type': 'u8'})
 // Type:  ('OptionalU8', {'optional': ''})
 // Type:  ('u8array', {'type': 'u8'})
@@ -18,8 +20,8 @@
 // Enumeration:  ('Action', ('ROT_CCLOCK', None))
 // Enumeration:  ('Action', ('ROT_180', None))
 // Enumeration:  ('Piece', ('I', None))
-// Enumeration:  ('Piece', ('J', None))
 // Enumeration:  ('Piece', ('L', None))
+// Enumeration:  ('Piece', ('J', None))
 // Enumeration:  ('Piece', ('O', None))
 // Enumeration:  ('Piece', ('S', None))
 // Enumeration:  ('Piece', ('Z', None))
@@ -32,7 +34,7 @@
 // Sequence:  CreateGameRequest ('u16', 'lockingTimeoutMs')
 // Sequence:  CreateGameReject ('u8', 'spare')
 // Sequence:  CreateGameAccept ('u64', 'gameId')
-// Sequence:  GameStartIndication ('u64', 'dropRequiredTimeout')
+// Sequence:  GameStartIndication ('u8', 'spare')
 // Type:  ('PieceList', {'type': 'Piece'})
 // Type:  ('PieceList', {'dynamic_array': '256'})
 // Sequence:  PieceRequest ('u8', 'count')
@@ -44,27 +46,32 @@
 // Sequence:  PlayerUpdateNotification ('PlayerList', 'playerToAddList')
 // Sequence:  LineToAdd ('AddMode', 'mode')
 // Sequence:  LineToAdd ('u8', 'line')
-// Sequence:  LineToAdd ('u64', 'diff')
+// Sequence:  LineToAdd ('u16', 'diff')
 // Type:  ('LineToAddList', {'type': 'LineToAdd'})
 // Type:  ('LineToAddList', {'dynamic_array': ''})
-// Sequence:  PiecePosition ('u8', 'x')
-// Sequence:  PiecePosition ('u8', 'y')
+// Sequence:  PiecePosition ('i8', 'x')
+// Sequence:  PiecePosition ('i8', 'y')
 // Type:  ('PiecePositionOptional', {'type': 'PiecePosition'})
 // Type:  ('PiecePositionOptional', {'optional': ''})
 // Sequence:  PlayerAction ('u8', 'count')
 // Sequence:  PlayerAction ('Action', 'action')
 // Type:  ('PlayerActionIndicationOptional', {'type': 'PlayerAction'})
 // Type:  ('PlayerActionIndicationOptional', {'optional': ''})
+// Type:  ('PieceOptional', {'type': 'Piece'})
+// Type:  ('PieceOptional', {'optional': ''})
 // Sequence:  BoardUpdateNotification ('u8', 'player')
 // Sequence:  BoardUpdateNotification ('PlayerActionIndicationOptional', 'action')
+// Sequence:  BoardUpdateNotification ('PieceOptional', 'placement')
 // Sequence:  BoardUpdateNotification ('PieceList', 'pieceToAddList')
 // Sequence:  BoardUpdateNotification ('PiecePositionOptional', 'position')
 // Sequence:  BoardUpdateNotification ('u8array', 'linesToRemoveList')
 // Sequence:  BoardUpdateNotification ('LineToAddList', 'linesToAddList')
 // Sequence:  BoardUpdateNotification ('OptionalU8', 'attackIndicator')
-// Sequence:  GameOverNotification ('u64', 'playerId')
+// Sequence:  GameOverNotification ('u8', 'playerId')
 // Sequence:  JoinRequest ('u64', 'gameId')
-// Sequence:  JoinAccept ('u64', 'playerId')
+// Sequence:  JoinAccept ('u8', 'playerId')
+// Sequence:  JoinAccept ('u8', 'boardWidth')
+// Sequence:  JoinAccept ('u8', 'boardHeight')
 // Sequence:  JoinReject ('u8', 'spare')
 // Type:  ('PlayerActionIndication', {'type': 'PlayerAction'})
 // Choice:  ('TetrisProtocol', 'CreateGameRequest')
@@ -93,6 +100,7 @@
 ************************************************/
 
 using u8 = uint8_t;
+using i8 = int8_t;
 using OptionalU8 = std::optional<u8>;
 using u8array = cum::vector<u8, 256>;
 using u16 = uint16_t;
@@ -113,8 +121,8 @@ enum class Action : uint8_t
 enum class Piece : uint8_t
 {
     I,
-    J,
     L,
+    J,
     O,
     S,
     Z,
@@ -147,7 +155,7 @@ struct CreateGameAccept
 
 struct GameStartIndication
 {
-    u64 dropRequiredTimeout;
+    u8 spare;
 };
 
 using PieceList = cum::vector<Piece, 256>;
@@ -177,14 +185,14 @@ struct LineToAdd
 {
     AddMode mode;
     u8 line;
-    u64 diff;
+    u16 diff;
 };
 
 using LineToAddList = cum::vector<LineToAdd, 4294967296>;
 struct PiecePosition
 {
-    u8 x;
-    u8 y;
+    i8 x;
+    i8 y;
 };
 
 using PiecePositionOptional = std::optional<PiecePosition>;
@@ -195,10 +203,12 @@ struct PlayerAction
 };
 
 using PlayerActionIndicationOptional = std::optional<PlayerAction>;
+using PieceOptional = std::optional<Piece>;
 struct BoardUpdateNotification
 {
     u8 player;
     PlayerActionIndicationOptional action;
+    PieceOptional placement;
     PieceList pieceToAddList;
     PiecePositionOptional position;
     u8array linesToRemoveList;
@@ -208,7 +218,7 @@ struct BoardUpdateNotification
 
 struct GameOverNotification
 {
-    u64 playerId;
+    u8 playerId;
 };
 
 struct JoinRequest
@@ -218,7 +228,9 @@ struct JoinRequest
 
 struct JoinAccept
 {
-    u64 playerId;
+    u8 playerId;
+    u8 boardWidth;
+    u8 boardHeight;
 };
 
 struct JoinReject
@@ -264,8 +276,8 @@ inline void str(const char* pName, const Piece& pIe, std::string& pCtx, bool pIs
         pCtx = pCtx + "\"" + pName + "\":";
     }
     if (Piece::I == pIe) pCtx += "\"I\"";
-    if (Piece::J == pIe) pCtx += "\"J\"";
     if (Piece::L == pIe) pCtx += "\"L\"";
+    if (Piece::J == pIe) pCtx += "\"J\"";
     if (Piece::O == pIe) pCtx += "\"O\"";
     if (Piece::S == pIe) pCtx += "\"S\"";
     if (Piece::Z == pIe) pCtx += "\"Z\"";
@@ -404,13 +416,13 @@ inline void str(const char* pName, const CreateGameAccept& pIe, std::string& pCt
 inline void encode_per(const GameStartIndication& pIe, cum::per_codec_ctx& pCtx)
 {
     using namespace cum;
-    encode_per(pIe.dropRequiredTimeout, pCtx);
+    encode_per(pIe.spare, pCtx);
 }
 
 inline void decode_per(GameStartIndication& pIe, cum::per_codec_ctx& pCtx)
 {
     using namespace cum;
-    decode_per(pIe.dropRequiredTimeout, pCtx);
+    decode_per(pIe.spare, pCtx);
 }
 
 inline void str(const char* pName, const GameStartIndication& pIe, std::string& pCtx, bool pIsLast)
@@ -426,7 +438,7 @@ inline void str(const char* pName, const GameStartIndication& pIe, std::string& 
     }
     size_t nOptional = 0;
     size_t nMandatory = 1;
-    str("dropRequiredTimeout", pIe.dropRequiredTimeout, pCtx, !(--nMandatory+nOptional));
+    str("spare", pIe.spare, pCtx, !(--nMandatory+nOptional));
     pCtx = pCtx + "}";
     if (!pIsLast)
     {
@@ -688,19 +700,27 @@ inline void encode_per(const BoardUpdateNotification& pIe, cum::per_codec_ctx& p
     {
         set_optional(optionalmask, 0);
     }
-    if (pIe.position)
+    if (pIe.placement)
     {
         set_optional(optionalmask, 1);
     }
-    if (pIe.attackIndicator)
+    if (pIe.position)
     {
         set_optional(optionalmask, 2);
+    }
+    if (pIe.attackIndicator)
+    {
+        set_optional(optionalmask, 3);
     }
     encode_per(optionalmask, sizeof(optionalmask), pCtx);
     encode_per(pIe.player, pCtx);
     if (pIe.action)
     {
         encode_per(*pIe.action, pCtx);
+    }
+    if (pIe.placement)
+    {
+        encode_per(*pIe.placement, pCtx);
     }
     encode_per(pIe.pieceToAddList, pCtx);
     if (pIe.position)
@@ -726,15 +746,20 @@ inline void decode_per(BoardUpdateNotification& pIe, cum::per_codec_ctx& pCtx)
         pIe.action = decltype(pIe.action)::value_type{};
         decode_per(*pIe.action, pCtx);
     }
-    decode_per(pIe.pieceToAddList, pCtx);
     if (check_optional(optionalmask, 1))
+    {
+        pIe.placement = decltype(pIe.placement)::value_type{};
+        decode_per(*pIe.placement, pCtx);
+    }
+    decode_per(pIe.pieceToAddList, pCtx);
+    if (check_optional(optionalmask, 2))
     {
         pIe.position = decltype(pIe.position)::value_type{};
         decode_per(*pIe.position, pCtx);
     }
     decode_per(pIe.linesToRemoveList, pCtx);
     decode_per(pIe.linesToAddList, pCtx);
-    if (check_optional(optionalmask, 2))
+    if (check_optional(optionalmask, 3))
     {
         pIe.attackIndicator = decltype(pIe.attackIndicator)::value_type{};
         decode_per(*pIe.attackIndicator, pCtx);
@@ -754,6 +779,7 @@ inline void str(const char* pName, const BoardUpdateNotification& pIe, std::stri
     }
     size_t nOptional = 0;
     if (pIe.action) nOptional++;
+    if (pIe.placement) nOptional++;
     if (pIe.position) nOptional++;
     if (pIe.attackIndicator) nOptional++;
     size_t nMandatory = 4;
@@ -761,6 +787,10 @@ inline void str(const char* pName, const BoardUpdateNotification& pIe, std::stri
     if (pIe.action)
     {
         str("action", *pIe.action, pCtx, !(nMandatory+--nOptional));
+    }
+    if (pIe.placement)
+    {
+        str("placement", *pIe.placement, pCtx, !(nMandatory+--nOptional));
     }
     str("pieceToAddList", pIe.pieceToAddList, pCtx, !(--nMandatory+nOptional));
     if (pIe.position)
@@ -850,12 +880,16 @@ inline void encode_per(const JoinAccept& pIe, cum::per_codec_ctx& pCtx)
 {
     using namespace cum;
     encode_per(pIe.playerId, pCtx);
+    encode_per(pIe.boardWidth, pCtx);
+    encode_per(pIe.boardHeight, pCtx);
 }
 
 inline void decode_per(JoinAccept& pIe, cum::per_codec_ctx& pCtx)
 {
     using namespace cum;
     decode_per(pIe.playerId, pCtx);
+    decode_per(pIe.boardWidth, pCtx);
+    decode_per(pIe.boardHeight, pCtx);
 }
 
 inline void str(const char* pName, const JoinAccept& pIe, std::string& pCtx, bool pIsLast)
@@ -870,8 +904,10 @@ inline void str(const char* pName, const JoinAccept& pIe, std::string& pCtx, boo
         pCtx = pCtx + "\"" + pName + "\":{";
     }
     size_t nOptional = 0;
-    size_t nMandatory = 1;
+    size_t nMandatory = 3;
     str("playerId", pIe.playerId, pCtx, !(--nMandatory+nOptional));
+    str("boardWidth", pIe.boardWidth, pCtx, !(--nMandatory+nOptional));
+    str("boardHeight", pIe.boardHeight, pCtx, !(--nMandatory+nOptional));
     pCtx = pCtx + "}";
     if (!pIsLast)
     {

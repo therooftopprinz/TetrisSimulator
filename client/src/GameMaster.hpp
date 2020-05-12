@@ -21,6 +21,10 @@ public:
     GameMaster() = delete;
     GameMaster(const GameMaster&&) = delete;
 
+    template<typename T>
+    void onMsg(T& pMsg)
+    {}
+
     void onMsg(PieceRequest& pMsg)
     {
         TetrisProtocol message;
@@ -29,14 +33,14 @@ public:
 
         if (!mStarted)
         {
-            mClient.consoleLog("[GameMaster]: PieceRequest invalid when game is not started!");
             throw std::runtime_error("server-client expectation mismatch!");
         }
 
         for (size_t i=0; i<pMsg.count; i++)
         {
-            unsigned p = i%Termino::MAX;
-            pieceResponse.pieceToAddList.emplace_back(Piece(p));
+            Piece p = Piece(mCurrentPiece);
+            mCurrentPiece = Termino((mCurrentPiece+1)%Termino::MAX);
+            pieceResponse.pieceToAddList.emplace_back(p);
         }
 
         mClient.send(message);
@@ -59,6 +63,8 @@ public:
             return false;
         }
 
+        mCurrentPiece = I;
+
         TetrisProtocol message;
         message = GameStartIndication{};
         mClient.send(message);
@@ -68,7 +74,7 @@ public:
     }
 
 private:
-    Termino mCurrentPiece = I;
+    Termino mCurrentPiece;
     bool mStarted = false;
     ITetrisClient& mClient;
 };

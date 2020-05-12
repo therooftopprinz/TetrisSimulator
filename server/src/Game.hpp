@@ -27,29 +27,28 @@ struct GameConfig
     uint16_t lockingTimeout;
 };
 
-template <typename T>
-class Player : public ITetrisBoardCallbacks
+class PlayerContext
 {
 public:
-    Player(uint8_t pPlayerId, T& pGame, IConnectionSession& pConnectionSession)
+    PlayerContext(uint8_t pPlayerId, TetrisBoardConfig& pConfig, std::weak_ptr<IConnectionSession> pConnectionSession)
         : mPlayerId(pPlayerId)
-        , mBoard(pGame.getBoardConfig(), this)
-        , mGame(pGame)
+        , mBoard(pConfig, mCallbacks)
+        , mConnectionSession(pConnectionSession)
     {}
 
-    std::pair<TetrisBoard&, std::mutex&> getBoard()
+    TetrisBoard& getBoard()
     {
-        return std::pair<TetrisBoard&, std::mutex&>(mBoard, mMutex);
+        return mBoard;
     }
 
-    uint32_t getCurrentPiece()
+    uint32_t& getCurrentPiece()
     {
         return mCurrentPieceIndex;
     }
 
-    IConnectionSession& getConnectionSession()
+    std::shared_ptr<IConnectionSession> getConnectionSession()
     {
-        return *mConnectionSession;
+        return mConnectionSession.lock();
     }
 
     uint8_t getId()
@@ -57,108 +56,162 @@ public:
         return mPlayerId;
     }
 
+    TetrisBoardCallbacks& getCallbacks()
+    {
+        return mCallbacks;
+    }
+
+    BoardUpdateNotification& getBoardUpates()
+    {
+        return mBoardUpdates;
+    }
+
+    int& getLockTimerId()
+    {
+        return mLockTimerId;
+    }
+
+    void reset()
+    {
+        mBoardUpdates = {};
+        mLockTimerId = -1;
+        mCurrentPieceIndex = 0;
+        mBoard.reset();
+    }
+
 private:
-    Termino generate()
-    {
-        auto term = mGame.generate(*this);
-        if (NONE != term)
-        {
-            mCurrentPieceIndex++;
-        }
-        return term;
-    }
-
-    void clear(std::vector<uint8_t> pLines)
-    {
-        mGame.clear(*this, std::move(pLines));
-    }
-
-    void piecePosition(CellCoord pCoord)
-    {
-        mGame.piecePosition(*this, pCoord);
-    }
-
-    void newPiece(Termino pPiece)
-    {
-        mGame.newPiece(*this, pPiece);
-    }
-
-    void hold()
-    {
-        mGame.hold(*this);
-    }
-
-    std::mutex mMutex;
-
     uint8_t mPlayerId;
+    int mLockTimerId = -1;
+    TetrisBoardCallbacks mCallbacks;
     uint32_t mCurrentPieceIndex = 0;
     TetrisBoard mBoard;
-    T& mGame;
-    IConnectionSession* mConnectionSession;
+    std::weak_ptr<IConnectionSession> mConnectionSession;
+    BoardUpdateNotification mBoardUpdates;
 };
+
+
+using GameEvent = std::variant<TetrisProtocol, bfc::LightFn<void()>>;
 
 class Game
 {
 public:
-    using GamePlayer = Player<Game>;
-    Game(const GameConfig& pConfig, IConnectionSession& pGmSession, bfc::ThreadPool<>& pTp, bfc::Timer<>& pTimer)
-        : mConfig(pConfig)
-        , mGmSession(&pGmSession)
+    Game(const GameConfig& pConfig, std::weak_ptr<IConnectionSession> pGmSession, bfc::ThreadPool<>& pTp, bfc::Timer<>& pTimer)
+        : mBoardConfig{pConfig.width, pConfig.height}
+        , mConfig(pConfig)
+        , mGmSession(pGmSession)
         , mTp(pTp)
         , mTimer(pTimer)
-    {}
+    {
+        mRunningWokerLock.unlock();
+    }
 
     Game (const Game&) = delete;
     void operator=(const Game&) = delete;
 
-    uint8_t join(IConnectionSession& pPlayerSession)
+    uint8_t join(std::weak_ptr<IConnectionSession> pPlayerSession)
     {
+        std::unique_lock<std::mutex> lg(mPlayersMutex);
+
         uint8_t id = mPlayersIdCtr++;
 
-        mPlayers.emplace(std::piecewise_construct, std::forward_as_tuple(id), std::forward_as_tuple(id, *this, pPlayerSession));
+        auto res = mPlayers.emplace(std::piecewise_construct, std::forward_as_tuple(id), std::forward_as_tuple(id, mBoardConfig, pPlayerSession));
+        auto& player = res.first->second;
+        auto& playerCallbacks = player.getCallbacks();
+        playerCallbacks.generate = [&player, this]() -> Termino {return onBcbGenerate(player);};
+        playerCallbacks.clear = [&player, this](std::vector<uint8_t> pLines) {return onBcbClear(player, std::move(pLines));};
+        playerCallbacks.piecePosition = [&player, this](CellCoord pCoord) {return onBcbPiecePosition(player, pCoord);};
+        playerCallbacks.placePiece = [&player, this](Termino PTermino) {return onBcbPlacePiece(player, PTermino);};
+        playerCallbacks.piecesAdded = [&player, this](std::vector<Termino> pTerminos) {return onBcbPiecesAdded(player, std::move(pTerminos));};
+        playerCallbacks.hold = [&player, this]() {return onBcbHold(player);};
+        playerCallbacks.commit = [&player, this]() {return onBcbCommit(player);};
+
         return id;
     }
 
     template <typename T>
-    void onMsg(T&)
+    void onMsg(T&& pMsg)
     {
+        std::unique_lock<std::mutex> lg(mGameEventsMutex);
+        mGameEvents.emplace_back(std::move(pMsg));
+        lg.unlock();
+
+        if (!mRunningWokerLock.owns_lock() && mRunningWokerLock.try_lock())
+        {
+            while (true)
+            {
+                lg.lock();
+                if (!mGameEvents.size())
+                {
+                    lg.unlock();
+                    break;
+                }
+                auto event = std::move(mGameEvents.back());
+                mGameEvents.pop_back();
+                lg.unlock();
+                runEvent(event);
+            }
+            mRunningWokerLock.unlock();
+        }
     }
 
-    template <typename T>
-    void onMsg(GameStartIndication& pMsg)
+    const TetrisBoardConfig& getBoardConfig() const
+    {
+        return mBoardConfig;
+    }
+
+
+private:
+
+    void trigger(bfc::LightFn<void()> pFn)
+    {
+        onMsg(std::move(pFn));
+    }
+
+    void runEvent(GameEvent& pEvent)
     {
         std::unique_lock<std::mutex> lg(mPlayersMutex);
+        std::visit([this](auto& pEvent){handle(pEvent);}, pEvent);
+    }
+
+    void handle(bfc::LightFn<void()>& pFn)
+    {
+        pFn();
+    }
+
+    template<typename T>
+    void handle(T&)
+    {}
+
+    void handle(TetrisProtocol& pMsg)
+    {
+        std::visit([this](auto& pMsg){handle(pMsg);}, pMsg);
+    }
+
+    void handle(GameStartIndication& pMsg)
+    {
+        mTerminoCache.clear();
         for (auto& i : mPlayers)
         {
-            auto board = i.second.getBoard();
-            board.first.restart();
+            i.second.reset();
+            startPlayerTimer(i.second);
         }
     }
 
-    void onMsg(PieceResponse& pMsg)
+    void handle(PieceResponse& pMsg)
     {
+        for (auto i : pMsg.pieceToAddList)
         {
-            std::unique_lock<std::mutex> lg(mTerminoCacheMutex);
-            for (auto i : pMsg.pieceToAddList)
-            {
-                mTerminoCache.emplace_back((Termino)i);
-            }
+            mTerminoCache.emplace_back((Termino)i);
         }
+        for (auto& i : mPlayers)
         {
-            std::unique_lock<std::mutex> lg(mPlayersMutex);
-            for (auto& i : mPlayers)
-            {
-                auto board = i.second.getBoard();
-                std::unique_lock<std::mutex> lg(board.second);
-                board.first.onEvent(board::TerminoAvailable{});
-            }
+            i.second.getBoard().onEvent(board::TerminoAvailable{});
         }
     }
 
-    Termino generate(GamePlayer& pPlayer)
+    Termino onBcbGenerate(PlayerContext& pPlayer)
     {
-        std::unique_lock<std::mutex> lg(mTerminoCacheMutex);
-        auto index = pPlayer.getCurrentPiece();
+        auto& index = pPlayer.getCurrentPiece();
         if (index >= mTerminoCache.size())
         {
             TetrisProtocol message;
@@ -166,46 +219,122 @@ public:
             auto& pieceRequest = std::get<PieceRequest>(message);
             pieceRequest.count = 100;
 
-            mGmSession->send(message);
+            send(message);
             return NONE;
         }
-        return mTerminoCache[index];
+        return mTerminoCache[index++];
     }
 
-    void clear(GamePlayer& pPlayer, std::vector<uint8_t> pLines)
+    void onBcbClear(PlayerContext& pPlayer, std::vector<uint8_t> pLines)
     {
+        auto& boardUpdateNotification = pPlayer.getBoardUpates();
+        for (auto i : pLines)
+        {
+            boardUpdateNotification.linesToRemoveList.emplace_back(i);
+        }
     }
 
-    void piecePosition(GamePlayer& pPlayer, CellCoord pCoord)
+    void onBcbPiecePosition(PlayerContext& pPlayer, CellCoord pCoord)
     {
-
+        auto& boardUpdateNotification = pPlayer.getBoardUpates();
+        boardUpdateNotification.position.emplace(PiecePosition{pCoord.first, pCoord.second});
     }
 
-    void newPiece(GamePlayer& pPlayer, Termino pPiece)
+    void onBcbPlacePiece(PlayerContext& pPlayer, Termino pPiece)
     {
+        auto& boardUpdateNotification = pPlayer.getBoardUpates();
+        boardUpdateNotification.placement.emplace(Piece(pPiece));
     }
 
-    void hold(GamePlayer& pPlayer)
+    void onBcbPiecesAdded(PlayerContext& pPlayer, std::vector<Termino> pTerminos)
     {
+        if (!pTerminos.size())
+        {
+            return;
+        }
+
+        auto& boardUpdateNotification = pPlayer.getBoardUpates();
+        for (auto i : pTerminos)
+        {
+            boardUpdateNotification.pieceToAddList.emplace_back(Piece(i));
+        }
     }
 
-    TetrisBoardConfig& getBoardConfig()
+    void onBcbHold(PlayerContext& pPlayer)
     {
-        return mBoardConfig;
+        auto& boardUpdateNotification = pPlayer.getBoardUpates();
+        boardUpdateNotification.action.emplace(PlayerAction{1, Action::HOLD});
     }
 
-private:
+    void onBcbCommit(PlayerContext& pPlayer)
+    {
+        auto& boardUpdateNotification = pPlayer.getBoardUpates();
+        boardUpdateNotification.player = pPlayer.getId();
+        TetrisProtocol message = std::move(boardUpdateNotification);
+        boardUpdateNotification = {};
+        send(message);
+        for (auto& i : mPlayers)
+        {
+            auto playerSession = i.second.getConnectionSession();
+            if (playerSession)
+            {
+                playerSession->send(message);
+            }
+        }
+    }
+
+    void startPlayerTimer(PlayerContext& pPlayer)
+    {
+        auto& timerId = pPlayer.getLockTimerId();
+        mTimer.cancel(timerId);
+        auto timediff = std::chrono::nanoseconds(mConfig.lockingTimeout)*1000*1000;
+        timerId = mTimer.schedule(timediff, [this, &pPlayer]{
+            trigger([this, &pPlayer](){
+                    onLockingTimeout(pPlayer);
+                });
+            });
+    }
+
+    void onLockingTimeout(PlayerContext& pPlayer)
+    {
+        auto& board = pPlayer.getBoard();
+        board.onEvent(board::Lock{});
+        if (!board.isGameOver())
+        {
+            startPlayerTimer(pPlayer);
+            return;
+        }
+
+        pPlayer.getLockTimerId() = -1;
+    }
+
+    void send(TetrisProtocol& pMessage)
+    {
+        auto gmSession = mGmSession.lock();
+        if (gmSession)
+        {
+            gmSession->send(pMessage);
+        }
+    }
+
+    std::deque<GameEvent> mGameEvents;
+    std::mutex mGameEventsMutex;
+    std::mutex mRunningWokerMutex;
+    std::unique_lock<std::mutex> mRunningWokerLock = std::unique_lock<std::mutex>(mRunningWokerMutex);
+
     std::vector<Termino> mTerminoCache;
-    std::mutex mTerminoCacheMutex;
 
     TetrisBoardConfig mBoardConfig;
     GameConfig mConfig;
-    IConnectionSession* mGmSession;
+    std::weak_ptr<IConnectionSession> mGmSession;
 
-    std::unordered_map<uint8_t, GamePlayer> mPlayers;
+    std::unordered_map<uint8_t, PlayerContext> mPlayers;
     std::vector<uint8_t> mFreePlayersId;
     uint8_t mPlayersIdCtr = 0;
     std::mutex mPlayersMutex;
+
+    std::unordered_map<int, bfc::LightFn<void()>> mTriggers;
+    int mTriggersId = 0;
 
     bfc::ThreadPool<>& mTp;
     bfc::Timer<>& mTimer;

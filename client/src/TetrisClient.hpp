@@ -20,8 +20,11 @@
 
 #include <interface/protocol.hpp>
 
+#include <common/TetrisBoard.hpp>
+
 #include <ITetrisClient.hpp>
 #include <GameMaster.hpp>
+#include <Player.hpp>
 
 namespace tetris
 {
@@ -86,9 +89,7 @@ public:
                 return cmdStart(std::move(pArgs));
             });
 
-        mKeyHandler = [this](char key) -> void{
-                consoleIn(key);
-            };
+        enableConsole();
     }
 
     void run()
@@ -147,7 +148,7 @@ private:
         std::string stred;
         str("root", message, stred, true);
 
-        Logless("TetrisClient: Receive raw=_ decoded=_", mFd, BufferLog(mBuffIdx, mBuff), stred.c_str());
+        Logless("TetrisClient: receive: raw=_ decoded=_", BufferLog(mBuffIdx, mBuff), stred.c_str());
         Logger::getInstance().flush();
 
         std::visit([this](auto& pMsg){
@@ -158,7 +159,18 @@ private:
     template <typename T>
     void onMsg(T& pMsg)
     {
-        throw std::runtime_error("Unhandled Message");
+        if (GM_ACTIVE == mState)
+        {
+            mGm->onMsg(pMsg);
+        }
+        else if(PLAYER_ACTIVE == mState)
+        {
+            mPlayer->onMsg(pMsg);
+        }
+        else
+        {
+            throw std::runtime_error("Unhandled Message");
+        }
     }
 
     void onMsg(CreateGameAccept& pMsg)
@@ -190,8 +202,16 @@ private:
             throw std::runtime_error("server-client expectation mismatch!");
         }
 
+        auto id = pMsg.playerId;
+
         mState = PLAYER_ACTIVE;
-        consoleLog("[client]: Player joined id=", pMsg.playerId, "!");
+        consoleLog("[client]: Player joined id=", unsigned(id), "!");
+
+        TetrisBoardConfig config{};
+        config.height = pMsg.boardHeight;
+        config.width = pMsg.boardWidth;
+
+        mPlayer.emplace(id, (ITetrisClient&)*this, config);
     }
 
     void onMsg(JoinReject& pMsg)
@@ -202,7 +222,7 @@ private:
         }
 
         mState = IDLE;
-        mGm.reset();
+        mPlayer.reset();
     }
 
     std::string cmdStart(bfc::ArgsMap&&)
@@ -296,14 +316,15 @@ private:
     {
         std::byte buffer[512];
         auto& msgSize = *(new (buffer) uint16_t(0));
-        cum::per_codec_ctx context(buffer+2, sizeof(buffer)-2);
+        cum::per_codec_ctx context(buffer+sizeof(msgSize), sizeof(buffer)-sizeof(msgSize));
         encode_per(pMessage, context);
 
-        msgSize = sizeof(buffer) - context.size();
+        msgSize = sizeof(buffer)-context.size()-2;
 
         std::string stred;
         str("root", pMessage, stred, true);
-        Logless("TetrisClient: send: raw=_ encoded=_", mFd, BufferLog(msgSize, buffer), stred.c_str());
+        Logless("TetrisClient: send: raw=_ encoded=_", BufferLog(msgSize, buffer), stred.c_str());
+        Logger::getInstance().flush();
 
         auto res = ::send(mFd, buffer, msgSize+2, 0);
         if (-1 == res)
@@ -402,11 +423,36 @@ private:
     template<typename... T>
     void consoleLog(T&&... ts)
     {
+        if (!mEnableConsole)
+        {
+            return;
+        }
+
         std::stringstream ss;
         consoleLog_(ss, ts...);
         std::cout << "\r\033[K" << ss.str() << "\n";
         std::string_view currentCmd(mConsoleInputBuffer, mConsoleInputBufferIdx);
         std::cout << "$user: " << currentCmd << std::flush;
+    }
+
+    void disableConsole()
+    {
+        mEnableConsole = false;
+    }
+
+    void setKeyHandler(bfc::LightFn<void(char)> pHandler)
+    {
+        mKeyHandler = std::move(pHandler);
+    }
+
+    void enableConsole()
+    {
+        setKeyHandler([this](char key) -> void {
+                consoleIn(key);
+            });
+
+        mEnableConsole = true;
+        consoleLog("[console]: enabling...");
     }
 
     template<typename... T>
@@ -420,6 +466,7 @@ private:
         consoleLog(pStr.c_str());
     }
 
+    bool mEnableConsole = true;
     char mConsoleInputBuffer[128];
     size_t mConsoleInputBufferIdx = 0;
     int mConsolseWaitChar = 0;
@@ -441,6 +488,7 @@ private:
     int mEventFd;
 
     std::optional<GameMaster> mGm;
+    std::optional<Player> mPlayer;
 };
 
 } // namespace tetris

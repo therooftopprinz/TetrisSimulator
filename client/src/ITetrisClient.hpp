@@ -14,8 +14,11 @@ namespace tetris
 
 struct ITetrisClient
 {
-    virtual void send(TetrisProtocol& pMessage) = 0;
+    virtual void send(TetrisProtocol&) = 0;
     virtual void consoleLog(const std::string&) = 0;
+    virtual void enableConsole() = 0;
+    virtual void disableConsole() = 0;
+    virtual void setKeyHandler(bfc::LightFn<void(char)>) = 0;
 };
 
 } // tetris
