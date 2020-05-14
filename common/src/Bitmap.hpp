@@ -4,6 +4,9 @@
 #include <cstring>
 #include <deque>
 #include <utility>
+#include <cstdint>
+#include <vector>
+#include <stdexcept>
 
 namespace tetris
 {
@@ -15,90 +18,18 @@ using BitmapPatch = std::vector<DiffBitline>;
 class Bitmap
 {
 public:
-    Bitmap(uint8_t pWidth, uint8_t pHeight)
-        : mWidth(pWidth)
-        , mHeight(pHeight)
-        , mData(pHeight)
-    {
-        if (pWidth >= sizeof(Bitline)*8)
-        {
-            throw std::invalid_argument("unsupported width");
-        }
-    }
-
+    Bitmap(uint8_t pWidth, uint8_t pHeight);
     Bitmap() = delete;
 
-    std::pair<uint8_t, uint8_t> dimension() const
-    {
-        return {mWidth, mHeight};
-    }
-
-    Bitline shiftUp(Bitline pValue)
-    {
-        mData.emplace_front(pValue);
-        auto rv = std::move(mData.back());
-        mData.pop_back();
-        return rv;
-    }
-
-    Bitline insertLine(uint8_t pLine, Bitline pValue)
-    {
-        auto it = mData.begin();
-        std::advance(it, pLine);
-        mData.emplace(it, pValue);
-
-        auto rv = std::move(mData.back());
-        mData.pop_back();
-        return rv;
-    }
-
-    void replaceLine(uint8_t pLine, Bitline pValue)
-    {
-        mData[pLine] = pValue;
-    }
-
-    void clearLine(uint8_t pLine)
-    {
-        auto it = mData.begin();
-        std::advance(it, pLine);
-        mData.erase(it);
-        mData.emplace_back();
-    }
-
-    uint64_t line(uint8_t pLine) const
-    {
-        return mData[pLine];
-    }
-
-    bool get(int8_t pX, int8_t pY) const
-    {
-        if (pX<0 || pX >= mWidth || pY<0 || pY >= mHeight)
-        {
-            return true;
-        }
-
-        return mData[pY] & (1 << (mWidth-1-pX));
-    }
-
-    bool set(bool pValue, uint8_t pX, uint8_t pY)
-    {
-        if (pX<0 || pX >= mWidth || pY<0 || pY >= mHeight)
-        {
-            return false;
-        }
-
-        uint64_t m = 1 << (mWidth-1-pX);
-        uint64_t c = pValue ? ~uint64_t() : 0;
-        auto& o = mData[pY];
-        o = (~m & o) | (m & c);
-
-        return true;
-    }
-
-    void reset()
-    {
-        mData = decltype(mData)(mHeight);
-    }
+    std::pair<uint8_t, uint8_t> dimension() const;
+    Bitline shiftUp(Bitline pValue);
+    Bitline insertLine(uint8_t pLine, Bitline pValue);
+    void replaceLine(uint8_t pLine, Bitline pValue);
+    void clearLine(uint8_t pLine);
+    uint64_t line(uint8_t pLine) const;
+    bool get(int8_t pX, int8_t pY) const;
+    bool set(bool pValue, uint8_t pX, uint8_t pY);
+    void reset();
 
 private: 
     uint8_t mWidth;

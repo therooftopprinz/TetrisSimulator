@@ -16,7 +16,7 @@ struct Move
 
 struct Rotate
 {
-    int8_t count;
+    uint8_t count;
 };
 
 struct Hold {};

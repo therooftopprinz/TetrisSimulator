@@ -1,8 +1,11 @@
 [x] player lock down
     [x] Fix timer issue
     [x] Lockdown restart while not gameover
-[ ] client basic player display and control
-    [ ] client control updates
-    [ ] client display updates
+[x] client basic player display and control
+    [x] client display updates
+        [x] Draw tetris board from bitmap and current
+    [x] client control updates
 [ ] board line updates
+    [x] replace lines
+    [ ] clear lines
 [ ] target change

@@ -57,12 +57,6 @@ Enumeration Piece
     T
 };
 
-Enumeration AddMode
-{
-    INSERT,
-    REPLACE
-};
-
 Sequence CreateGameRequest
 {
     u8 boardWidth,
@@ -117,16 +111,15 @@ Sequence PlayerUpdateNotification
     PlayerList playerToAddList
 };
 
-Sequence LineToAdd
+Sequence Line
 {
-    AddMode mode,
     u8 line,
     u16 diff
 };
 
-Type LineToAddList
+Type LineList
 {
-    type(LineToAdd) dynamic_array()
+    type(Line) dynamic_array()
 };
 
 Sequence PiecePosition
@@ -140,17 +133,6 @@ Type PiecePositionOptional
     type(PiecePosition) optional()
 };
 
-Sequence PlayerAction
-{
-    u8 count,
-    Action action
-};
-
-Type PlayerActionIndicationOptional
-{
-    type(PlayerAction) optional()
-};
-
 Type PieceOptional
 {
     type(Piece) optional()
@@ -159,12 +141,14 @@ Type PieceOptional
 Sequence BoardUpdateNotification
 {
     u8 player,
-    PlayerActionIndicationOptional action,
+    OptionalU8 rotation,
     PieceOptional placement,
+    PieceOptional hold,
     PieceList pieceToAddList,
     PiecePositionOptional position,
+    LineList linesToReplaceList,
     u8array linesToRemoveList,
-    LineToAddList linesToAddList,
+    LineList linesToInsertList,
     OptionalU8 attackIndicator
 };
 
@@ -190,9 +174,11 @@ Sequence JoinReject
     u8 spare
 };
 
-Type PlayerActionIndication
+Sequence PlayerActionIndication
 {
-    type(PlayerAction)
+    u8 player,
+    u8 count,
+    Action action
 };
 
 Choice TetrisProtocol
