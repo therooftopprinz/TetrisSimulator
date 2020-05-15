@@ -68,6 +68,13 @@ public:
     template<typename T>
     void onMsg(T& pMsg)
     {
+        mLatencyMeasEnd = std::chrono::high_resolution_clock::now();
+        if (mLatencyMeasEnabled)
+        {
+            mLatencyMeas = std::chrono::duration_cast<std::chrono::milliseconds>(mLatencyMeasEnd-mLatencyMeasStart);
+        }
+        mLatencyMeasEnabled = false;
+
         handle(pMsg);
     }
 
@@ -155,11 +162,18 @@ private:
         mClient.send(message);
     }
 
-
+    void handle(GameStartNotification& pMsg)
+    {
+        mGameStarted = true;
+    }
 
     void handle(BoardUpdateNotification& pMsg)
     {
-        mGameStarted = true;
+        if (!mGameStarted)
+        {
+            return;
+        }
+
         auto foundIt = mPlayers.find(pMsg.player);
         if (mPlayers.end() != foundIt)
         {
@@ -177,13 +191,13 @@ private:
                 player.x = pos->x; 
                 player.y = pos->y; 
             }
-            for (auto i : pMsg.linesToRemoveList)
-            {
-                player.bitmap.clearLine(i);
-            }
             for (auto i : pMsg.linesToReplaceList)
             {
                 player.bitmap.replaceLine(i.line, i.diff);
+            }
+            for (auto i : pMsg.linesToRemoveList)
+            {
+                player.bitmap.clearLine(i);
             }
             for (auto i : pMsg.linesToInsertList)
             {
@@ -203,8 +217,11 @@ private:
         auto& player = mPlayers.find(mPlayerId)->second;
         drawBoard(0,3, player);
 
+        setCursor(0, 1);
+        print("key_input >> %3d %3d %3d", mKeyPressHistory[2], mKeyPressHistory[1], mKeyPressHistory[0]);
+
         setCursor(0, 0);
-        print("key input: %3d %3d %3d << key", mKeyPressHistory[2], mKeyPressHistory[1], mKeyPressHistory[0]);
+        print("command latency: %4dms", mLatencyMeas.count());
 
         printf("\x1b[2J");
         for (auto i=0u; i<mHeight; i++)
@@ -309,6 +326,9 @@ private:
         }
         draw();
 
+        mLatencyMeasStart = std::chrono::high_resolution_clock::now();
+        mLatencyMeasEnabled = true;
+
         if (27 == mKeyPressHistory[2] && 91 == mKeyPressHistory[1])
         {
             if (68 == pKey)
@@ -349,6 +369,11 @@ private:
     size_t mCursor;
 
     std::deque<char> mKeyPressHistory = std::deque<char>(3);
+
+    std::chrono::high_resolution_clock::time_point mLatencyMeasStart;
+    std::chrono::high_resolution_clock::time_point mLatencyMeasEnd;
+    std::chrono::milliseconds mLatencyMeas{};
+    bool mLatencyMeasEnabled = false;
 
     ITetrisClient& mClient;
     uint8_t mPlayerId; 

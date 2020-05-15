@@ -5,7 +5,9 @@
     [x] client display updates
         [x] Draw tetris board from bitmap and current
     [x] client control updates
-[ ] board line updates
+[ ] board updates
     [x] replace lines
-    [ ] clear lines
+    [x] clear lines
+    [x] latency measurement
+[ ] wall kicks
 [ ] target change

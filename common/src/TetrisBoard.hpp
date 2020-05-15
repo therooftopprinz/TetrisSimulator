@@ -28,6 +28,7 @@ struct TetrisBoardCallbacks
     bfc::LightFn<void(std::vector<Termino>)> piecesAdded;
     bfc::LightFn<void()> hold;
     bfc::LightFn<void()> commit;
+    bfc::LightFn<void()> gameOver;
 };
 
 struct TetrisBoardConfig

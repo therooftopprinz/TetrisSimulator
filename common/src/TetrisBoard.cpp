@@ -153,6 +153,22 @@ void TetrisBoard::lock()
 
     mCallbacks.replace(std::move(lineChanged));
 
+    Bitline clearMask = -1;
+    clearMask >>= (sizeof(Bitline)*8) - mData.dimension().first;
+
+    std::vector<uint8_t> lineRemoved;
+
+    for (int8_t ypos = mData.dimension().second-1; ypos >= 0; ypos--)
+    {
+        if (clearMask == mData.line(ypos))
+        {
+            lineRemoved.emplace_back(ypos);
+            mData.clearLine(ypos);
+        }
+    }
+
+    mCallbacks.clear(std::move(lineRemoved));
+
     nextPiece();
 }
 
@@ -165,12 +181,14 @@ void TetrisBoard::initializeCurrentTermino(Termino pTerm)
     auto& rotator = std::get<3>(termino);
     mCurrentSetterFn = &std::get<4>(termino);
     mCurrentTransformer = createTransformerFromRotator(rotator);
+
+    auto x = std::floor(double(mConfig.width)/2 - double(std::get<traits::WIDTH>(traits::gTerminoTraitsMap[mCurrent]))/2);
+    auto y = mConfig.height - std::get<traits::HEIGHT>(traits::gTerminoTraitsMap[mCurrent]);
+    mXY = CellCoord{x,y};
 }
 
 void TetrisBoard::nextPiece()
 {
-    mCurrent = NONE;
-
     if (!mPieceList.size())
     {
         if (!requestPiece())
@@ -180,16 +198,19 @@ void TetrisBoard::nextPiece()
     }
 
     initializeCurrentTermino(mPieceList.front());
-
-    mCallbacks.placePiece(mCurrent);
     mPieceList.pop_front();
 
-    requestPiece();
+    auto res =  (*mCurrentCheckerFn)(mData, mXY.first, mXY.second, mCurrentTransformer);
+    if (0 != res)
+    {
+        mCallbacks.gameOver();
+        return;
+    }
 
-    auto x = std::floor(double(mConfig.width)/2 - double(std::get<traits::WIDTH>(traits::gTerminoTraitsMap[mCurrent]))/2);
-    auto y = mConfig.height - std::get<traits::HEIGHT>(traits::gTerminoTraitsMap[mCurrent]);
-    mXY = CellCoord{x,y};
+    mCallbacks.placePiece(mCurrent);
     mCallbacks.piecePosition(mXY);
+
+    requestPiece();
 }
 
 bool TetrisBoard::requestPiece()

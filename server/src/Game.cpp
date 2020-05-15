@@ -71,8 +71,16 @@ void Game::handle(GameStartIndication& pMsg)
     mGameStarted = true;
 
     mTerminoCache.clear();
+    TetrisProtocol message = GameStartNotification{};
+
     for (auto& i : mPlayers)
     {
+        auto session = i.second.getConnectionSession();
+        if (session)
+        {
+            session->send(message);
+        }
+
         i.second.reset();
         startPlayerTimer(i.second);
     }
@@ -153,6 +161,7 @@ Termino Game::onBcbGenerate(PlayerContext& pPlayer)
     }
     return mTerminoCache[index++];
 }
+
 void Game::onBcbReplace(PlayerContext& pPlayer, std::vector<Line> pLines)
 {
     auto& boardUpdateNotification = pPlayer.getBoardUpates();

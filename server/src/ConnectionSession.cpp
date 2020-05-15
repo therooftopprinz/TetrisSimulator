@@ -154,7 +154,7 @@ void ConnectionSession::send(TetrisProtocol& pMessage)
 
     std::string stred;
     str("root", pMessage, stred, true);
-    Logless("ConnectionSession[fd=_]: send: raw=_ encoded=_", mFd, BufferLog(msgSize, buffer), stred.c_str());
+    Logless("ConnectionSession[fd=_]: send: raw=_ encoded=_", mFd, BufferLog(msgSize, buffer+2), stred.c_str());
     Logger::getInstance().flush();
 
     auto res = ::send(mFd, buffer, msgSize+2, 0);
