@@ -29,8 +29,10 @@ struct PlayerContext
     uint8_t rotation;
     int8_t x;
     int8_t y;
+    int8_t floor;
 
     TransformFn transformer;
+    traits::CheckerFn* checkerFn = nullptr;
     traits::ApplierFn applier = nullptr;
 
     void initializeCurrentTermino(Termino pTerm)
@@ -39,6 +41,7 @@ struct PlayerContext
         rotation = 0;
         auto& termino = traits::gTerminoTraitsMap[*current];
         auto& rotator = std::get<3>(termino);
+        checkerFn = &std::get<2>(termino);
         applier = std::get<5>(termino);
         transformer = [this, &rotator](CellCoord pCoord) {
                 return rotator(this->rotation, pCoord);
@@ -190,6 +193,17 @@ private:
             {
                 player.x = pos->x; 
                 player.y = pos->y; 
+                int8_t ypos = player.y;
+                while (true)
+                {
+                    auto res =(*player.checkerFn)(player.bitmap, player.x, ypos-1, player.transformer);
+                    if (res)
+                    {
+                        break;
+                    }
+                    ypos--;
+                }
+                player.floor = ypos;
             }
             for (auto i : pMsg.linesToReplaceList)
             {
@@ -285,6 +299,14 @@ private:
                 {
                     setCursor(pCoord.first, pCoord.second);
                     putchar('@');
+                }, pPlayer.transformer);
+
+            auto ghosty = pY + pPlayer.floor + 1;
+
+            pPlayer.applier(x, ghosty, [this](CellCoord pCoord)
+                {
+                    setCursor(pCoord.first, pCoord.second);
+                    putchar('-');
                 }, pPlayer.transformer);
         }
     }

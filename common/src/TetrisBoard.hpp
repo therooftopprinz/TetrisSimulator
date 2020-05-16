@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <deque>
 #include <cmath>
+#include <optional>
 
 #include <bfc/FixedFunctionObject.hpp>
 

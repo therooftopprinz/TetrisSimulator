@@ -9,5 +9,21 @@
     [x] replace lines
     [x] clear lines
     [x] latency measurement
-[ ] wall kicks
-[ ] target change
+[x] wall kicks
+    [x] I termino data set
+    [x] other termino data set 
+[ ] attack mechanics
+    [x] attack messages
+        [x] AttackLinesRequest
+        [x] AttackLinesResponse
+        [x] BoardUpdateNotification
+    [ ] change timer
+        [ ] attack player
+[ ] hold
+[ ] PlayerGameOver
+[ ] GameEndNotification
+[ ] PlayerUpdates
+[ ] Advance client display
+    [ ] Display hold
+    [ ] display queue
+    [ ] current attacked player

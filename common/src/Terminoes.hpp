@@ -184,6 +184,7 @@ namespace traits
     using ApplierFn = void(*)(int8_t, int8_t, const ApplyFn&, const TransformFn&);
     using TraitsTuple = std::tuple<uint8_t, uint8_t, CheckerFn, RotatorFn, SetterFn, ApplierFn>;
 
+
     inline std::unordered_map<Termino, TraitsTuple> gTerminoTraitsMap = {
         {I, std::make_tuple(TerminoI::width, TerminoI::height, &tetris::TerminoI::check<Bitmap>, &TerminoRotator<tetris::TerminoI>::rotate, &tetris::TerminoI::set<Bitmap>, &tetris::TerminoI::apply)},
         {L, std::make_tuple(TerminoL::width, TerminoL::height, &tetris::TerminoJ::check<Bitmap>, &TerminoRotator<tetris::TerminoJ>::rotate, &tetris::TerminoJ::set<Bitmap>, &tetris::TerminoJ::apply)},
@@ -193,6 +194,67 @@ namespace traits
         {Z, std::make_tuple(TerminoZ::width, TerminoZ::height, &tetris::TerminoZ::check<Bitmap>, &TerminoRotator<tetris::TerminoZ>::rotate, &tetris::TerminoZ::set<Bitmap>, &tetris::TerminoZ::apply)},
         {T, std::make_tuple(TerminoT::width, TerminoT::height, &tetris::TerminoT::check<Bitmap>, &TerminoRotator<tetris::TerminoT>::rotate, &tetris::TerminoT::set<Bitmap>, &tetris::TerminoT::apply)}
     };
+
+    struct PairHasher { 
+        template <class T1, class T2> 
+        size_t operator()(const std::pair<T1, T2>& p) const
+        { 
+            auto hash1 = std::hash<T1>{}(p.first); 
+            auto hash2 = std::hash<T2>{}(p.second); 
+            return hash1 ^ hash2; 
+        } 
+    };
+
+    using TerminoRotation = std::pair<Termino, uint8_t>;
+    using _TR = TerminoRotation;
+    using _RD = std::pair<std::vector<CellCoord>, std::vector<CellCoord>>;
+
+    inline _RD commonRot0 = _RD{{{ 0, 0}, { 1, 0}, { 1, 1}, { 0,-2}, { 1,-2}}, {{ 0, 0}, {-1, 0}, {-1, 1}, { 0,-2}, {-1,-2}}};
+    inline _RD commonRot1 = _RD{{{ 0, 0}, { 1, 0}, { 1,-1}, { 0, 2}, { 1, 2}}, {{ 0, 0}, { 1, 0}, { 1,-1}, { 0, 2}, { 1, 2}}};
+    inline _RD commonRot2 = _RD{{{ 0, 0}, {-1, 0}, {-1, 1}, { 0,-2}, {-1,-2}}, {{ 0, 0}, { 1, 0}, { 1, 1}, { 0,-2}, { 1,-2}}};
+    inline _RD commonRot3 = _RD{{{ 0, 0}, {-1, 0}, {-1,-1}, { 0, 2}, {-1, 2}}, {{ 0, 0}, {-1, 0}, {-1,-1}, { 0, 2}, {-1, 2}}};
+
+    inline _RD terminoIRot0 = _RD{{{ 0, 0}, {-1, 0}, { 2, 0}, {-1, 2}, { 2,-1}}, {{ 0, 0}, {-2, 0}, { 1, 0}, {-2,-1}, { 1, 2}}};
+    inline _RD terminoIRot1 = _RD{{{ 0, 0}, { 2, 0}, {-1, 0}, { 2, 1}, {-1,-2}}, {{ 0, 0}, {-1, 0}, { 2, 0}, {-1, 2}, { 2,-1}}};
+    inline _RD terminoIRot2 = _RD{{{ 0, 0}, { 1, 0}, {-2, 0}, { 1,-2}, {-2, 1}}, {{ 0, 0}, { 2, 0}, {-1, 0}, { 2, 1}, {-1,-2}}};
+    inline _RD terminoIRot3 = _RD{{{ 0, 0}, {-2, 0}, { 1, 0}, {-2,-1}, { 1, 2}}, {{ 0, 0}, { 1, 0}, {-2, 0}, { 1,-2}, {-2, 1}}};
+
+
+    inline std::unordered_map<TerminoRotation, _RD, PairHasher> gSrsWallKicks = {
+        {_TR(L, 0), commonRot0},
+        {_TR(J, 0), commonRot0},
+        {_TR(O, 0), commonRot0},
+        {_TR(S, 0), commonRot0},
+        {_TR(Z, 0), commonRot0},
+        {_TR(T, 0), commonRot0},
+
+        {_TR(L, 1), commonRot1},
+        {_TR(J, 1), commonRot1},
+        {_TR(O, 1), commonRot1},
+        {_TR(S, 1), commonRot1},
+        {_TR(Z, 1), commonRot1},
+        {_TR(T, 1), commonRot1},
+
+        {_TR(L, 2), commonRot2},
+        {_TR(J, 2), commonRot2},
+        {_TR(O, 2), commonRot2},
+        {_TR(S, 2), commonRot2},
+        {_TR(Z, 2), commonRot2},
+        {_TR(T, 2), commonRot2},
+
+        {_TR(L, 3), commonRot3},
+        {_TR(J, 3), commonRot3},
+        {_TR(O, 3), commonRot3},
+        {_TR(S, 3), commonRot3},
+        {_TR(Z, 3), commonRot3},
+        {_TR(T, 3), commonRot3},
+
+        {_TR(I, 0), terminoIRot0},
+        {_TR(I, 1), terminoIRot1},
+        {_TR(I, 2), terminoIRot2},
+        {_TR(I, 3), terminoIRot3},
+    };
+
 } // namespace traits
 
 } // namespace tetris

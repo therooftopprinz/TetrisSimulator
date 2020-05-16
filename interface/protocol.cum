@@ -24,6 +24,11 @@ Type u16
     type(unsigned) width(16)
 };
 
+Type u16Array
+{
+    type(u16) dynamic_array(256)
+}
+
 Type u64
 {
     type(unsigned) width(64)
@@ -93,6 +98,16 @@ Sequence PieceRequest
 Sequence PieceResponse
 {
     PieceList pieceToAddList
+};
+
+Sequence AttackLinesRequest
+{
+    u8 count   
+};
+
+Sequence AttackLinesRequest
+{
+    u16Array attackLinesToAddList 
 };
 
 Sequence Player
@@ -195,6 +210,8 @@ Choice TetrisProtocol
     GameStartIndication,
     PieceRequest,
     PieceResponse,
+    AttackLinesRequest,
+    AttackLinesResponse,
 
     GameStartNotification,
     PlayerUpdateNotification,

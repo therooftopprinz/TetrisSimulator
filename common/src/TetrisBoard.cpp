@@ -73,11 +73,70 @@ void TetrisBoard::doEvent(const board::Move& pEvent)
 
 void TetrisBoard::doEvent(const board::Rotate& pEvent)
 {
-    // auto origRot = mRot;
-    mRot += pEvent.count;
+    if (0 == pEvent.count)
+    {
+        return;
+    }
+    
+    uint8_t origRot = mRot;
+    uint8_t count = std::abs(pEvent.count) % 4;
+    mRot = pEvent.count > 0 ? mRot + count : mRot + (4 - count);
     mRot %= 4;
+
+    CellCoord accepted = mXY;
+    bool isAccepted = false;
+
+    auto checkPos = [this, &accepted, &isAccepted](auto& pCoords) -> bool {
+        for (auto& i : pCoords)
+        {
+            CellCoord pos{mXY.first + i.first, mXY.second + i.second};
+            auto res = (*mCurrentCheckerFn)(mData, pos.first, pos.second, mCurrentTransformer);
+            if (res)
+            {
+                continue;
+            }
+
+            accepted = pos;
+            isAccepted = true;
+            return true;
+        }
+        return false;
+    };
+
+    enum Direction{RIGHT, LEFT};
+
+    auto check = [this, &checkPos] (uint8_t pRot, Direction pDir)
+    {
+            pRot %= 4;
+            auto& wallKick = traits::gSrsWallKicks[traits::TerminoRotation(mCurrent, pRot)];
+            auto& coords = pDir == RIGHT ? wallKick.second : wallKick.first;
+            checkPos(coords);
+    };
+
+    if (count%2)
+    {
+        check(origRot, pEvent.count > 0 ? RIGHT : LEFT );
+    }
+    else
+    {
+        {
+            check(mRot+1, LEFT);
+        }
+        if (!isAccepted)
+        {
+            check(mRot+3, RIGHT);
+        }
+    }
+
+    if (!isAccepted)
+    {
+        mRot = origRot;
+        return;
+    }
+
+    mXY = accepted;
     mCallbacks.rotate(mRot);
-    // TODO check wall kicks;
+    mCallbacks.piecePosition(mXY);
 }
 
 void TetrisBoard::doEvent(const board::Hold&)
@@ -112,7 +171,7 @@ void TetrisBoard::doEvent(const board::SoftDrop&)
                 lock();
                 return;
             }
-            mXY.second = ypos;
+            mXY.second = ypos+1;
             break;
         }
         ypos -= 1;
