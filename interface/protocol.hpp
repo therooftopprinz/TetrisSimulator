@@ -6,8 +6,12 @@
 // Type:  ('u8Optional', {'optional': ''})
 // Type:  ('u8array', {'type': 'u8'})
 // Type:  ('u8array', {'dynamic_array': '256'})
+// Type:  ('u8arrayLarge', {'type': 'u8'})
+// Type:  ('u8arrayLarge', {'dynamic_array': ''})
 // Type:  ('u16', {'type': 'unsigned'})
 // Type:  ('u16', {'width': '16'})
+// Type:  ('u16Array', {'type': 'u16'})
+// Type:  ('u16Array', {'dynamic_array': '256'})
 // Type:  ('u64', {'type': 'unsigned'})
 // Type:  ('u64', {'width': '64'})
 // Type:  ('String', {'type': 'asciiz'})
@@ -26,10 +30,41 @@
 // Enumeration:  ('Piece', ('S', None))
 // Enumeration:  ('Piece', ('Z', None))
 // Enumeration:  ('Piece', ('T', None))
+// Enumeration:  ('CodeType', ('TINY_ASM', None))
+// Enumeration:  ('CodeType', ('TINY_BIN', None))
+// Enumeration:  ('DeleteReason', ('DISCONNECTED', None))
+// Enumeration:  ('DeleteReason', ('KICKED', None))
+// Enumeration:  ('PlayerMode', ('SPECTATOR', None))
+// Enumeration:  ('PlayerMode', ('PLAYER', None))
+// Enumeration:  ('AttackModeEnum', ('DIVIDE', None))
+// Enumeration:  ('AttackModeEnum', ('TO_ALL', None))
+// Enumeration:  ('AttackModeEnum', ('TO_MOST', None))
+// Enumeration:  ('AttackModeEnum', ('TO_SELF', None))
+// Enumeration:  ('AttackModeEnum', ('ROULETTE', None))
+// Enumeration:  ('CounteringType', ('FULL', None))
+// Enumeration:  ('CounteringType', ('LIMITED', None))
+// Enumeration:  ('CounteringType', ('INSTANT', None))
+// Sequence:  PlayerInfo ('u8', 'id')
+// Sequence:  PlayerInfo ('String', 'name')
+// Sequence:  PlayerInfo ('PlayerMode', 'mode')
+// Type:  ('PlayerInfoList', {'type': 'PlayerInfo'})
+// Type:  ('PlayerInfoList', {'dynamic_array': '256'})
+// Sequence:  SequentialTargeting ('u16', 'targetChangeTimeoutMs')
+// Sequence:  Random ('u64', 'seed')
+// Sequence:  GameScript ('CodeType', 'type')
+// Sequence:  GameScript ('u8arrayLarge', 'code')
+// Choice:  ('AttackMode', 'SequentialTargeting')
+// Choice:  ('AttackMode', 'AttackModeEnum')
+// Choice:  ('AttackMode', 'Random')
+// Choice:  ('AttackMode', 'GameScript')
+// Sequence:  AttackModeCommon ('u16', 'attackDelayMs')
+// Sequence:  AttackModeCommon ('CounteringType', 'counteringType')
 // Sequence:  CreateGameRequest ('u8', 'boardWidth')
 // Sequence:  CreateGameRequest ('u8', 'boardHeight')
-// Sequence:  CreateGameRequest ('u16', 'targetChangeTimeoutMs')
 // Sequence:  CreateGameRequest ('u16', 'lockingTimeoutMs')
+// Sequence:  CreateGameRequest ('u16', 'clearTimeoutMs')
+// Sequence:  CreateGameRequest ('AttackMode', 'attackMode')
+// Sequence:  CreateGameRequest ('AttackModeCommon', 'attackModeCommon')
 // Sequence:  CreateGameReject ('u8', 'spare')
 // Sequence:  CreateGameAccept ('u64', 'gameId')
 // Sequence:  GameStartIndication ('u8', 'spare')
@@ -37,12 +72,19 @@
 // Type:  ('PieceList', {'dynamic_array': '256'})
 // Sequence:  PieceRequest ('u8', 'count')
 // Sequence:  PieceResponse ('PieceList', 'pieceToAddList')
-// Sequence:  Player ('String', 'name')
-// Sequence:  Player ('u8', 'id')
-// Type:  ('PlayerList', {'type': 'Player'})
-// Type:  ('PlayerList', {'dynamic_array': '256'})
+// Sequence:  AttackLinesRequest ('u8', 'count')
+// Sequence:  AttackLinesResponse ('u16Array', 'attackLinesToAddList')
+// Sequence:  AttackIndication ('u8', 'player')
+// Sequence:  AttackIndication ('u8Optional', 'attack')
+// Sequence:  AttackIndication ('u8Optional', 'warningLines')
 // Sequence:  GameStartNotification ('u8', 'spare')
-// Sequence:  PlayerUpdateNotification ('PlayerList', 'playerToAddList')
+// Sequence:  PlayerToRemove ('u8', 'id')
+// Sequence:  PlayerToRemove ('DeleteReason', 'reason')
+// Type:  ('PlayerToRemoveList', {'type': 'PlayerToRemove'})
+// Type:  ('PlayerToRemoveList', {'dynamic_array': '256'})
+// Sequence:  PlayerUpdateNotification ('PlayerInfoList', 'playeToAddList')
+// Sequence:  PlayerUpdateNotification ('PlayerInfoList', 'playerToModifyList')
+// Sequence:  PlayerUpdateNotification ('PlayerToRemoveList', 'playerToDelete')
 // Sequence:  Line ('u8', 'line')
 // Sequence:  Line ('u16', 'diff')
 // Type:  ('LineList', {'type': 'Line'})
@@ -64,10 +106,14 @@
 // Sequence:  BoardUpdateNotification ('u8Optional', 'attackIndicator')
 // Sequence:  BoardUpdateNotification ('PiecePositionOptional', 'position')
 // Sequence:  GameOverNotification ('u8', 'playerId')
+// Sequence:  GameEndNotification ('u8', 'spare')
 // Sequence:  JoinRequest ('u64', 'gameId')
+// Sequence:  JoinRequest ('u64', 'secret')
 // Sequence:  JoinAccept ('u8', 'playerId')
+// Sequence:  JoinAccept ('u64', 'secret')
 // Sequence:  JoinAccept ('u8', 'boardWidth')
 // Sequence:  JoinAccept ('u8', 'boardHeight')
+// Sequence:  JoinAccept ('PlayerInfoList', 'playerToAddList')
 // Sequence:  JoinReject ('u8', 'spare')
 // Sequence:  PlayerActionIndication ('u8', 'player')
 // Sequence:  PlayerActionIndication ('u8', 'count')
@@ -78,10 +124,14 @@
 // Choice:  ('TetrisProtocol', 'GameStartIndication')
 // Choice:  ('TetrisProtocol', 'PieceRequest')
 // Choice:  ('TetrisProtocol', 'PieceResponse')
+// Choice:  ('TetrisProtocol', 'AttackLinesRequest')
+// Choice:  ('TetrisProtocol', 'AttackLinesResponse')
+// Choice:  ('TetrisProtocol', 'AttackIndication')
 // Choice:  ('TetrisProtocol', 'GameStartNotification')
 // Choice:  ('TetrisProtocol', 'PlayerUpdateNotification')
 // Choice:  ('TetrisProtocol', 'BoardUpdateNotification')
 // Choice:  ('TetrisProtocol', 'GameOverNotification')
+// Choice:  ('TetrisProtocol', 'GameEndNotification')
 // Choice:  ('TetrisProtocol', 'JoinRequest')
 // Choice:  ('TetrisProtocol', 'JoinAccept')
 // Choice:  ('TetrisProtocol', 'JoinReject')
@@ -102,7 +152,9 @@ using u8 = uint8_t;
 using i8 = int8_t;
 using u8Optional = std::optional<u8>;
 using u8array = cum::vector<u8, 256>;
+using u8arrayLarge = cum::vector<u8, 4294967296>;
 using u16 = uint16_t;
+using u16Array = cum::vector<u16, 256>;
 using u64 = uint64_t;
 using String = std::string;
 enum class Action : uint8_t
@@ -128,12 +180,79 @@ enum class Piece : uint8_t
     T
 };
 
+enum class CodeType : uint8_t
+{
+    TINY_ASM,
+    TINY_BIN
+};
+
+enum class DeleteReason : uint8_t
+{
+    DISCONNECTED,
+    KICKED
+};
+
+enum class PlayerMode : uint8_t
+{
+    SPECTATOR,
+    PLAYER
+};
+
+enum class AttackModeEnum : uint8_t
+{
+    DIVIDE,
+    TO_ALL,
+    TO_MOST,
+    TO_SELF,
+    ROULETTE
+};
+
+enum class CounteringType : uint8_t
+{
+    FULL,
+    LIMITED,
+    INSTANT
+};
+
+struct PlayerInfo
+{
+    u8 id;
+    String name;
+    PlayerMode mode;
+};
+
+using PlayerInfoList = cum::vector<PlayerInfo, 256>;
+struct SequentialTargeting
+{
+    u16 targetChangeTimeoutMs;
+};
+
+struct Random
+{
+    u64 seed;
+};
+
+struct GameScript
+{
+    CodeType type;
+    u8arrayLarge code;
+};
+
+using AttackMode = std::variant<SequentialTargeting,AttackModeEnum,Random,GameScript>;
+struct AttackModeCommon
+{
+    u16 attackDelayMs;
+    CounteringType counteringType;
+};
+
 struct CreateGameRequest
 {
     u8 boardWidth;
     u8 boardHeight;
-    u16 targetChangeTimeoutMs;
     u16 lockingTimeoutMs;
+    u16 clearTimeoutMs;
+    AttackMode attackMode;
+    AttackModeCommon attackModeCommon;
 };
 
 struct CreateGameReject
@@ -162,21 +281,40 @@ struct PieceResponse
     PieceList pieceToAddList;
 };
 
-struct Player
+struct AttackLinesRequest
 {
-    String name;
-    u8 id;
+    u8 count;
 };
 
-using PlayerList = cum::vector<Player, 256>;
+struct AttackLinesResponse
+{
+    u16Array attackLinesToAddList;
+};
+
+struct AttackIndication
+{
+    u8 player;
+    u8Optional attack;
+    u8Optional warningLines;
+};
+
 struct GameStartNotification
 {
     u8 spare;
 };
 
+struct PlayerToRemove
+{
+    u8 id;
+    DeleteReason reason;
+};
+
+using PlayerToRemoveList = cum::vector<PlayerToRemove, 256>;
 struct PlayerUpdateNotification
 {
-    PlayerList playerToAddList;
+    PlayerInfoList playeToAddList;
+    PlayerInfoList playerToModifyList;
+    PlayerToRemoveList playerToDelete;
 };
 
 struct Line
@@ -213,16 +351,24 @@ struct GameOverNotification
     u8 playerId;
 };
 
+struct GameEndNotification
+{
+    u8 spare;
+};
+
 struct JoinRequest
 {
     u64 gameId;
+    u64 secret;
 };
 
 struct JoinAccept
 {
     u8 playerId;
+    u64 secret;
     u8 boardWidth;
     u8 boardHeight;
+    PlayerInfoList playerToAddList;
 };
 
 struct JoinReject
@@ -237,7 +383,7 @@ struct PlayerActionIndication
     Action action;
 };
 
-using TetrisProtocol = std::variant<CreateGameRequest,CreateGameAccept,CreateGameReject,GameStartIndication,PieceRequest,PieceResponse,GameStartNotification,PlayerUpdateNotification,BoardUpdateNotification,GameOverNotification,JoinRequest,JoinAccept,JoinReject,PlayerActionIndication>;
+using TetrisProtocol = std::variant<CreateGameRequest,CreateGameAccept,CreateGameReject,GameStartIndication,PieceRequest,PieceResponse,AttackLinesRequest,AttackLinesResponse,AttackIndication,GameStartNotification,PlayerUpdateNotification,BoardUpdateNotification,GameOverNotification,GameEndNotification,JoinRequest,JoinAccept,JoinReject,PlayerActionIndication>;
 /***********************************************
 /
 /            Codec Definitions
@@ -287,13 +433,379 @@ inline void str(const char* pName, const Piece& pIe, std::string& pCtx, bool pIs
     }
 }
 
+inline void str(const char* pName, const CodeType& pIe, std::string& pCtx, bool pIsLast)
+{
+    using namespace cum;
+    if (pName)
+    {
+        pCtx = pCtx + "\"" + pName + "\":";
+    }
+    if (CodeType::TINY_ASM == pIe) pCtx += "\"TINY_ASM\"";
+    if (CodeType::TINY_BIN == pIe) pCtx += "\"TINY_BIN\"";
+    pCtx = pCtx + "}";
+    if (!pIsLast)
+    {
+        pCtx += ",";
+    }
+}
+
+inline void str(const char* pName, const DeleteReason& pIe, std::string& pCtx, bool pIsLast)
+{
+    using namespace cum;
+    if (pName)
+    {
+        pCtx = pCtx + "\"" + pName + "\":";
+    }
+    if (DeleteReason::DISCONNECTED == pIe) pCtx += "\"DISCONNECTED\"";
+    if (DeleteReason::KICKED == pIe) pCtx += "\"KICKED\"";
+    pCtx = pCtx + "}";
+    if (!pIsLast)
+    {
+        pCtx += ",";
+    }
+}
+
+inline void str(const char* pName, const PlayerMode& pIe, std::string& pCtx, bool pIsLast)
+{
+    using namespace cum;
+    if (pName)
+    {
+        pCtx = pCtx + "\"" + pName + "\":";
+    }
+    if (PlayerMode::SPECTATOR == pIe) pCtx += "\"SPECTATOR\"";
+    if (PlayerMode::PLAYER == pIe) pCtx += "\"PLAYER\"";
+    pCtx = pCtx + "}";
+    if (!pIsLast)
+    {
+        pCtx += ",";
+    }
+}
+
+inline void str(const char* pName, const AttackModeEnum& pIe, std::string& pCtx, bool pIsLast)
+{
+    using namespace cum;
+    if (pName)
+    {
+        pCtx = pCtx + "\"" + pName + "\":";
+    }
+    if (AttackModeEnum::DIVIDE == pIe) pCtx += "\"DIVIDE\"";
+    if (AttackModeEnum::TO_ALL == pIe) pCtx += "\"TO_ALL\"";
+    if (AttackModeEnum::TO_MOST == pIe) pCtx += "\"TO_MOST\"";
+    if (AttackModeEnum::TO_SELF == pIe) pCtx += "\"TO_SELF\"";
+    if (AttackModeEnum::ROULETTE == pIe) pCtx += "\"ROULETTE\"";
+    pCtx = pCtx + "}";
+    if (!pIsLast)
+    {
+        pCtx += ",";
+    }
+}
+
+inline void str(const char* pName, const CounteringType& pIe, std::string& pCtx, bool pIsLast)
+{
+    using namespace cum;
+    if (pName)
+    {
+        pCtx = pCtx + "\"" + pName + "\":";
+    }
+    if (CounteringType::FULL == pIe) pCtx += "\"FULL\"";
+    if (CounteringType::LIMITED == pIe) pCtx += "\"LIMITED\"";
+    if (CounteringType::INSTANT == pIe) pCtx += "\"INSTANT\"";
+    pCtx = pCtx + "}";
+    if (!pIsLast)
+    {
+        pCtx += ",";
+    }
+}
+
+inline void encode_per(const PlayerInfo& pIe, cum::per_codec_ctx& pCtx)
+{
+    using namespace cum;
+    encode_per(pIe.id, pCtx);
+    encode_per(pIe.name, pCtx);
+    encode_per(pIe.mode, pCtx);
+}
+
+inline void decode_per(PlayerInfo& pIe, cum::per_codec_ctx& pCtx)
+{
+    using namespace cum;
+    decode_per(pIe.id, pCtx);
+    decode_per(pIe.name, pCtx);
+    decode_per(pIe.mode, pCtx);
+}
+
+inline void str(const char* pName, const PlayerInfo& pIe, std::string& pCtx, bool pIsLast)
+{
+    using namespace cum;
+    if (!pName)
+    {
+        pCtx = pCtx + "{";
+    }
+    else
+    {
+        pCtx = pCtx + "\"" + pName + "\":{";
+    }
+    size_t nOptional = 0;
+    size_t nMandatory = 3;
+    str("id", pIe.id, pCtx, !(--nMandatory+nOptional));
+    str("name", pIe.name, pCtx, !(--nMandatory+nOptional));
+    str("mode", pIe.mode, pCtx, !(--nMandatory+nOptional));
+    pCtx = pCtx + "}";
+    if (!pIsLast)
+    {
+        pCtx += ",";
+    }
+}
+
+inline void encode_per(const SequentialTargeting& pIe, cum::per_codec_ctx& pCtx)
+{
+    using namespace cum;
+    encode_per(pIe.targetChangeTimeoutMs, pCtx);
+}
+
+inline void decode_per(SequentialTargeting& pIe, cum::per_codec_ctx& pCtx)
+{
+    using namespace cum;
+    decode_per(pIe.targetChangeTimeoutMs, pCtx);
+}
+
+inline void str(const char* pName, const SequentialTargeting& pIe, std::string& pCtx, bool pIsLast)
+{
+    using namespace cum;
+    if (!pName)
+    {
+        pCtx = pCtx + "{";
+    }
+    else
+    {
+        pCtx = pCtx + "\"" + pName + "\":{";
+    }
+    size_t nOptional = 0;
+    size_t nMandatory = 1;
+    str("targetChangeTimeoutMs", pIe.targetChangeTimeoutMs, pCtx, !(--nMandatory+nOptional));
+    pCtx = pCtx + "}";
+    if (!pIsLast)
+    {
+        pCtx += ",";
+    }
+}
+
+inline void encode_per(const Random& pIe, cum::per_codec_ctx& pCtx)
+{
+    using namespace cum;
+    encode_per(pIe.seed, pCtx);
+}
+
+inline void decode_per(Random& pIe, cum::per_codec_ctx& pCtx)
+{
+    using namespace cum;
+    decode_per(pIe.seed, pCtx);
+}
+
+inline void str(const char* pName, const Random& pIe, std::string& pCtx, bool pIsLast)
+{
+    using namespace cum;
+    if (!pName)
+    {
+        pCtx = pCtx + "{";
+    }
+    else
+    {
+        pCtx = pCtx + "\"" + pName + "\":{";
+    }
+    size_t nOptional = 0;
+    size_t nMandatory = 1;
+    str("seed", pIe.seed, pCtx, !(--nMandatory+nOptional));
+    pCtx = pCtx + "}";
+    if (!pIsLast)
+    {
+        pCtx += ",";
+    }
+}
+
+inline void encode_per(const GameScript& pIe, cum::per_codec_ctx& pCtx)
+{
+    using namespace cum;
+    encode_per(pIe.type, pCtx);
+    encode_per(pIe.code, pCtx);
+}
+
+inline void decode_per(GameScript& pIe, cum::per_codec_ctx& pCtx)
+{
+    using namespace cum;
+    decode_per(pIe.type, pCtx);
+    decode_per(pIe.code, pCtx);
+}
+
+inline void str(const char* pName, const GameScript& pIe, std::string& pCtx, bool pIsLast)
+{
+    using namespace cum;
+    if (!pName)
+    {
+        pCtx = pCtx + "{";
+    }
+    else
+    {
+        pCtx = pCtx + "\"" + pName + "\":{";
+    }
+    size_t nOptional = 0;
+    size_t nMandatory = 2;
+    str("type", pIe.type, pCtx, !(--nMandatory+nOptional));
+    str("code", pIe.code, pCtx, !(--nMandatory+nOptional));
+    pCtx = pCtx + "}";
+    if (!pIsLast)
+    {
+        pCtx += ",";
+    }
+}
+
+inline void encode_per(const AttackMode& pIe, cum::per_codec_ctx& pCtx)
+{
+    using namespace cum;
+    using TypeIndex = uint8_t;
+    TypeIndex type = pIe.index();
+    encode_per(type, pCtx);
+    if (0 == type)
+    {
+        encode_per(std::get<0>(pIe), pCtx);
+    }
+    else if (1 == type)
+    {
+        encode_per(std::get<1>(pIe), pCtx);
+    }
+    else if (2 == type)
+    {
+        encode_per(std::get<2>(pIe), pCtx);
+    }
+    else if (3 == type)
+    {
+        encode_per(std::get<3>(pIe), pCtx);
+    }
+}
+
+inline void decode_per(AttackMode& pIe, cum::per_codec_ctx& pCtx)
+{
+    using namespace cum;
+    using TypeIndex = uint8_t;
+    TypeIndex type;
+    decode_per(type, pCtx);
+    if (0 == type)
+    {
+        pIe = SequentialTargeting();
+        decode_per(std::get<0>(pIe), pCtx);
+    }
+    else if (1 == type)
+    {
+        pIe = AttackModeEnum();
+        decode_per(std::get<1>(pIe), pCtx);
+    }
+    else if (2 == type)
+    {
+        pIe = Random();
+        decode_per(std::get<2>(pIe), pCtx);
+    }
+    else if (3 == type)
+    {
+        pIe = GameScript();
+        decode_per(std::get<3>(pIe), pCtx);
+    }
+}
+
+inline void str(const char* pName, const AttackMode& pIe, std::string& pCtx, bool pIsLast)
+{
+    using namespace cum;
+    using TypeIndex = uint8_t;
+    TypeIndex type = pIe.index();
+    if (0 == type)
+    {
+        if (pName)
+            pCtx += std::string(pName) + ":{";
+        else
+            pCtx += "{";
+        std::string name = "SequentialTargeting";
+        str(name.c_str(), std::get<0>(pIe), pCtx, true);
+        pCtx += "}";
+    }
+    else if (1 == type)
+    {
+        if (pName)
+            pCtx += std::string(pName) + ":{";
+        else
+            pCtx += "{";
+        std::string name = "AttackModeEnum";
+        str(name.c_str(), std::get<1>(pIe), pCtx, true);
+        pCtx += "}";
+    }
+    else if (2 == type)
+    {
+        if (pName)
+            pCtx += std::string(pName) + ":{";
+        else
+            pCtx += "{";
+        std::string name = "Random";
+        str(name.c_str(), std::get<2>(pIe), pCtx, true);
+        pCtx += "}";
+    }
+    else if (3 == type)
+    {
+        if (pName)
+            pCtx += std::string(pName) + ":{";
+        else
+            pCtx += "{";
+        std::string name = "GameScript";
+        str(name.c_str(), std::get<3>(pIe), pCtx, true);
+        pCtx += "}";
+    }
+    if (!pIsLast)
+    {
+        pCtx += ",";
+    }
+}
+
+inline void encode_per(const AttackModeCommon& pIe, cum::per_codec_ctx& pCtx)
+{
+    using namespace cum;
+    encode_per(pIe.attackDelayMs, pCtx);
+    encode_per(pIe.counteringType, pCtx);
+}
+
+inline void decode_per(AttackModeCommon& pIe, cum::per_codec_ctx& pCtx)
+{
+    using namespace cum;
+    decode_per(pIe.attackDelayMs, pCtx);
+    decode_per(pIe.counteringType, pCtx);
+}
+
+inline void str(const char* pName, const AttackModeCommon& pIe, std::string& pCtx, bool pIsLast)
+{
+    using namespace cum;
+    if (!pName)
+    {
+        pCtx = pCtx + "{";
+    }
+    else
+    {
+        pCtx = pCtx + "\"" + pName + "\":{";
+    }
+    size_t nOptional = 0;
+    size_t nMandatory = 2;
+    str("attackDelayMs", pIe.attackDelayMs, pCtx, !(--nMandatory+nOptional));
+    str("counteringType", pIe.counteringType, pCtx, !(--nMandatory+nOptional));
+    pCtx = pCtx + "}";
+    if (!pIsLast)
+    {
+        pCtx += ",";
+    }
+}
+
 inline void encode_per(const CreateGameRequest& pIe, cum::per_codec_ctx& pCtx)
 {
     using namespace cum;
     encode_per(pIe.boardWidth, pCtx);
     encode_per(pIe.boardHeight, pCtx);
-    encode_per(pIe.targetChangeTimeoutMs, pCtx);
     encode_per(pIe.lockingTimeoutMs, pCtx);
+    encode_per(pIe.clearTimeoutMs, pCtx);
+    encode_per(pIe.attackMode, pCtx);
+    encode_per(pIe.attackModeCommon, pCtx);
 }
 
 inline void decode_per(CreateGameRequest& pIe, cum::per_codec_ctx& pCtx)
@@ -301,8 +813,10 @@ inline void decode_per(CreateGameRequest& pIe, cum::per_codec_ctx& pCtx)
     using namespace cum;
     decode_per(pIe.boardWidth, pCtx);
     decode_per(pIe.boardHeight, pCtx);
-    decode_per(pIe.targetChangeTimeoutMs, pCtx);
     decode_per(pIe.lockingTimeoutMs, pCtx);
+    decode_per(pIe.clearTimeoutMs, pCtx);
+    decode_per(pIe.attackMode, pCtx);
+    decode_per(pIe.attackModeCommon, pCtx);
 }
 
 inline void str(const char* pName, const CreateGameRequest& pIe, std::string& pCtx, bool pIsLast)
@@ -317,11 +831,13 @@ inline void str(const char* pName, const CreateGameRequest& pIe, std::string& pC
         pCtx = pCtx + "\"" + pName + "\":{";
     }
     size_t nOptional = 0;
-    size_t nMandatory = 4;
+    size_t nMandatory = 6;
     str("boardWidth", pIe.boardWidth, pCtx, !(--nMandatory+nOptional));
     str("boardHeight", pIe.boardHeight, pCtx, !(--nMandatory+nOptional));
-    str("targetChangeTimeoutMs", pIe.targetChangeTimeoutMs, pCtx, !(--nMandatory+nOptional));
     str("lockingTimeoutMs", pIe.lockingTimeoutMs, pCtx, !(--nMandatory+nOptional));
+    str("clearTimeoutMs", pIe.clearTimeoutMs, pCtx, !(--nMandatory+nOptional));
+    str("attackMode", pIe.attackMode, pCtx, !(--nMandatory+nOptional));
+    str("attackModeCommon", pIe.attackModeCommon, pCtx, !(--nMandatory+nOptional));
     pCtx = pCtx + "}";
     if (!pIsLast)
     {
@@ -494,21 +1010,19 @@ inline void str(const char* pName, const PieceResponse& pIe, std::string& pCtx, 
     }
 }
 
-inline void encode_per(const Player& pIe, cum::per_codec_ctx& pCtx)
+inline void encode_per(const AttackLinesRequest& pIe, cum::per_codec_ctx& pCtx)
 {
     using namespace cum;
-    encode_per(pIe.name, pCtx);
-    encode_per(pIe.id, pCtx);
+    encode_per(pIe.count, pCtx);
 }
 
-inline void decode_per(Player& pIe, cum::per_codec_ctx& pCtx)
+inline void decode_per(AttackLinesRequest& pIe, cum::per_codec_ctx& pCtx)
 {
     using namespace cum;
-    decode_per(pIe.name, pCtx);
-    decode_per(pIe.id, pCtx);
+    decode_per(pIe.count, pCtx);
 }
 
-inline void str(const char* pName, const Player& pIe, std::string& pCtx, bool pIsLast)
+inline void str(const char* pName, const AttackLinesRequest& pIe, std::string& pCtx, bool pIsLast)
 {
     using namespace cum;
     if (!pName)
@@ -520,9 +1034,114 @@ inline void str(const char* pName, const Player& pIe, std::string& pCtx, bool pI
         pCtx = pCtx + "\"" + pName + "\":{";
     }
     size_t nOptional = 0;
-    size_t nMandatory = 2;
-    str("name", pIe.name, pCtx, !(--nMandatory+nOptional));
-    str("id", pIe.id, pCtx, !(--nMandatory+nOptional));
+    size_t nMandatory = 1;
+    str("count", pIe.count, pCtx, !(--nMandatory+nOptional));
+    pCtx = pCtx + "}";
+    if (!pIsLast)
+    {
+        pCtx += ",";
+    }
+}
+
+inline void encode_per(const AttackLinesResponse& pIe, cum::per_codec_ctx& pCtx)
+{
+    using namespace cum;
+    encode_per(pIe.attackLinesToAddList, pCtx);
+}
+
+inline void decode_per(AttackLinesResponse& pIe, cum::per_codec_ctx& pCtx)
+{
+    using namespace cum;
+    decode_per(pIe.attackLinesToAddList, pCtx);
+}
+
+inline void str(const char* pName, const AttackLinesResponse& pIe, std::string& pCtx, bool pIsLast)
+{
+    using namespace cum;
+    if (!pName)
+    {
+        pCtx = pCtx + "{";
+    }
+    else
+    {
+        pCtx = pCtx + "\"" + pName + "\":{";
+    }
+    size_t nOptional = 0;
+    size_t nMandatory = 1;
+    str("attackLinesToAddList", pIe.attackLinesToAddList, pCtx, !(--nMandatory+nOptional));
+    pCtx = pCtx + "}";
+    if (!pIsLast)
+    {
+        pCtx += ",";
+    }
+}
+
+inline void encode_per(const AttackIndication& pIe, cum::per_codec_ctx& pCtx)
+{
+    using namespace cum;
+    uint8_t optionalmask[1] = {};
+    if (pIe.attack)
+    {
+        set_optional(optionalmask, 0);
+    }
+    if (pIe.warningLines)
+    {
+        set_optional(optionalmask, 1);
+    }
+    encode_per(optionalmask, sizeof(optionalmask), pCtx);
+    encode_per(pIe.player, pCtx);
+    if (pIe.attack)
+    {
+        encode_per(*pIe.attack, pCtx);
+    }
+    if (pIe.warningLines)
+    {
+        encode_per(*pIe.warningLines, pCtx);
+    }
+}
+
+inline void decode_per(AttackIndication& pIe, cum::per_codec_ctx& pCtx)
+{
+    using namespace cum;
+    uint8_t optionalmask[1] = {};
+    decode_per(optionalmask, sizeof(optionalmask), pCtx);
+    decode_per(pIe.player, pCtx);
+    if (check_optional(optionalmask, 0))
+    {
+        pIe.attack = decltype(pIe.attack)::value_type{};
+        decode_per(*pIe.attack, pCtx);
+    }
+    if (check_optional(optionalmask, 1))
+    {
+        pIe.warningLines = decltype(pIe.warningLines)::value_type{};
+        decode_per(*pIe.warningLines, pCtx);
+    }
+}
+
+inline void str(const char* pName, const AttackIndication& pIe, std::string& pCtx, bool pIsLast)
+{
+    using namespace cum;
+    if (!pName)
+    {
+        pCtx = pCtx + "{";
+    }
+    else
+    {
+        pCtx = pCtx + "\"" + pName + "\":{";
+    }
+    size_t nOptional = 0;
+    if (pIe.attack) nOptional++;
+    if (pIe.warningLines) nOptional++;
+    size_t nMandatory = 1;
+    str("player", pIe.player, pCtx, !(--nMandatory+nOptional));
+    if (pIe.attack)
+    {
+        str("attack", *pIe.attack, pCtx, !(nMandatory+--nOptional));
+    }
+    if (pIe.warningLines)
+    {
+        str("warningLines", *pIe.warningLines, pCtx, !(nMandatory+--nOptional));
+    }
     pCtx = pCtx + "}";
     if (!pIsLast)
     {
@@ -563,16 +1182,56 @@ inline void str(const char* pName, const GameStartNotification& pIe, std::string
     }
 }
 
+inline void encode_per(const PlayerToRemove& pIe, cum::per_codec_ctx& pCtx)
+{
+    using namespace cum;
+    encode_per(pIe.id, pCtx);
+    encode_per(pIe.reason, pCtx);
+}
+
+inline void decode_per(PlayerToRemove& pIe, cum::per_codec_ctx& pCtx)
+{
+    using namespace cum;
+    decode_per(pIe.id, pCtx);
+    decode_per(pIe.reason, pCtx);
+}
+
+inline void str(const char* pName, const PlayerToRemove& pIe, std::string& pCtx, bool pIsLast)
+{
+    using namespace cum;
+    if (!pName)
+    {
+        pCtx = pCtx + "{";
+    }
+    else
+    {
+        pCtx = pCtx + "\"" + pName + "\":{";
+    }
+    size_t nOptional = 0;
+    size_t nMandatory = 2;
+    str("id", pIe.id, pCtx, !(--nMandatory+nOptional));
+    str("reason", pIe.reason, pCtx, !(--nMandatory+nOptional));
+    pCtx = pCtx + "}";
+    if (!pIsLast)
+    {
+        pCtx += ",";
+    }
+}
+
 inline void encode_per(const PlayerUpdateNotification& pIe, cum::per_codec_ctx& pCtx)
 {
     using namespace cum;
-    encode_per(pIe.playerToAddList, pCtx);
+    encode_per(pIe.playeToAddList, pCtx);
+    encode_per(pIe.playerToModifyList, pCtx);
+    encode_per(pIe.playerToDelete, pCtx);
 }
 
 inline void decode_per(PlayerUpdateNotification& pIe, cum::per_codec_ctx& pCtx)
 {
     using namespace cum;
-    decode_per(pIe.playerToAddList, pCtx);
+    decode_per(pIe.playeToAddList, pCtx);
+    decode_per(pIe.playerToModifyList, pCtx);
+    decode_per(pIe.playerToDelete, pCtx);
 }
 
 inline void str(const char* pName, const PlayerUpdateNotification& pIe, std::string& pCtx, bool pIsLast)
@@ -587,8 +1246,10 @@ inline void str(const char* pName, const PlayerUpdateNotification& pIe, std::str
         pCtx = pCtx + "\"" + pName + "\":{";
     }
     size_t nOptional = 0;
-    size_t nMandatory = 1;
-    str("playerToAddList", pIe.playerToAddList, pCtx, !(--nMandatory+nOptional));
+    size_t nMandatory = 3;
+    str("playeToAddList", pIe.playeToAddList, pCtx, !(--nMandatory+nOptional));
+    str("playerToModifyList", pIe.playerToModifyList, pCtx, !(--nMandatory+nOptional));
+    str("playerToDelete", pIe.playerToDelete, pCtx, !(--nMandatory+nOptional));
     pCtx = pCtx + "}";
     if (!pIsLast)
     {
@@ -840,16 +1501,51 @@ inline void str(const char* pName, const GameOverNotification& pIe, std::string&
     }
 }
 
+inline void encode_per(const GameEndNotification& pIe, cum::per_codec_ctx& pCtx)
+{
+    using namespace cum;
+    encode_per(pIe.spare, pCtx);
+}
+
+inline void decode_per(GameEndNotification& pIe, cum::per_codec_ctx& pCtx)
+{
+    using namespace cum;
+    decode_per(pIe.spare, pCtx);
+}
+
+inline void str(const char* pName, const GameEndNotification& pIe, std::string& pCtx, bool pIsLast)
+{
+    using namespace cum;
+    if (!pName)
+    {
+        pCtx = pCtx + "{";
+    }
+    else
+    {
+        pCtx = pCtx + "\"" + pName + "\":{";
+    }
+    size_t nOptional = 0;
+    size_t nMandatory = 1;
+    str("spare", pIe.spare, pCtx, !(--nMandatory+nOptional));
+    pCtx = pCtx + "}";
+    if (!pIsLast)
+    {
+        pCtx += ",";
+    }
+}
+
 inline void encode_per(const JoinRequest& pIe, cum::per_codec_ctx& pCtx)
 {
     using namespace cum;
     encode_per(pIe.gameId, pCtx);
+    encode_per(pIe.secret, pCtx);
 }
 
 inline void decode_per(JoinRequest& pIe, cum::per_codec_ctx& pCtx)
 {
     using namespace cum;
     decode_per(pIe.gameId, pCtx);
+    decode_per(pIe.secret, pCtx);
 }
 
 inline void str(const char* pName, const JoinRequest& pIe, std::string& pCtx, bool pIsLast)
@@ -864,8 +1560,9 @@ inline void str(const char* pName, const JoinRequest& pIe, std::string& pCtx, bo
         pCtx = pCtx + "\"" + pName + "\":{";
     }
     size_t nOptional = 0;
-    size_t nMandatory = 1;
+    size_t nMandatory = 2;
     str("gameId", pIe.gameId, pCtx, !(--nMandatory+nOptional));
+    str("secret", pIe.secret, pCtx, !(--nMandatory+nOptional));
     pCtx = pCtx + "}";
     if (!pIsLast)
     {
@@ -877,16 +1574,20 @@ inline void encode_per(const JoinAccept& pIe, cum::per_codec_ctx& pCtx)
 {
     using namespace cum;
     encode_per(pIe.playerId, pCtx);
+    encode_per(pIe.secret, pCtx);
     encode_per(pIe.boardWidth, pCtx);
     encode_per(pIe.boardHeight, pCtx);
+    encode_per(pIe.playerToAddList, pCtx);
 }
 
 inline void decode_per(JoinAccept& pIe, cum::per_codec_ctx& pCtx)
 {
     using namespace cum;
     decode_per(pIe.playerId, pCtx);
+    decode_per(pIe.secret, pCtx);
     decode_per(pIe.boardWidth, pCtx);
     decode_per(pIe.boardHeight, pCtx);
+    decode_per(pIe.playerToAddList, pCtx);
 }
 
 inline void str(const char* pName, const JoinAccept& pIe, std::string& pCtx, bool pIsLast)
@@ -901,10 +1602,12 @@ inline void str(const char* pName, const JoinAccept& pIe, std::string& pCtx, boo
         pCtx = pCtx + "\"" + pName + "\":{";
     }
     size_t nOptional = 0;
-    size_t nMandatory = 3;
+    size_t nMandatory = 5;
     str("playerId", pIe.playerId, pCtx, !(--nMandatory+nOptional));
+    str("secret", pIe.secret, pCtx, !(--nMandatory+nOptional));
     str("boardWidth", pIe.boardWidth, pCtx, !(--nMandatory+nOptional));
     str("boardHeight", pIe.boardHeight, pCtx, !(--nMandatory+nOptional));
+    str("playerToAddList", pIe.playerToAddList, pCtx, !(--nMandatory+nOptional));
     pCtx = pCtx + "}";
     if (!pIsLast)
     {
@@ -1046,6 +1749,22 @@ inline void encode_per(const TetrisProtocol& pIe, cum::per_codec_ctx& pCtx)
     {
         encode_per(std::get<13>(pIe), pCtx);
     }
+    else if (14 == type)
+    {
+        encode_per(std::get<14>(pIe), pCtx);
+    }
+    else if (15 == type)
+    {
+        encode_per(std::get<15>(pIe), pCtx);
+    }
+    else if (16 == type)
+    {
+        encode_per(std::get<16>(pIe), pCtx);
+    }
+    else if (17 == type)
+    {
+        encode_per(std::get<17>(pIe), pCtx);
+    }
 }
 
 inline void decode_per(TetrisProtocol& pIe, cum::per_codec_ctx& pCtx)
@@ -1086,43 +1805,63 @@ inline void decode_per(TetrisProtocol& pIe, cum::per_codec_ctx& pCtx)
     }
     else if (6 == type)
     {
-        pIe = GameStartNotification();
+        pIe = AttackLinesRequest();
         decode_per(std::get<6>(pIe), pCtx);
     }
     else if (7 == type)
     {
-        pIe = PlayerUpdateNotification();
+        pIe = AttackLinesResponse();
         decode_per(std::get<7>(pIe), pCtx);
     }
     else if (8 == type)
     {
-        pIe = BoardUpdateNotification();
+        pIe = AttackIndication();
         decode_per(std::get<8>(pIe), pCtx);
     }
     else if (9 == type)
     {
-        pIe = GameOverNotification();
+        pIe = GameStartNotification();
         decode_per(std::get<9>(pIe), pCtx);
     }
     else if (10 == type)
     {
-        pIe = JoinRequest();
+        pIe = PlayerUpdateNotification();
         decode_per(std::get<10>(pIe), pCtx);
     }
     else if (11 == type)
     {
-        pIe = JoinAccept();
+        pIe = BoardUpdateNotification();
         decode_per(std::get<11>(pIe), pCtx);
     }
     else if (12 == type)
     {
-        pIe = JoinReject();
+        pIe = GameOverNotification();
         decode_per(std::get<12>(pIe), pCtx);
     }
     else if (13 == type)
     {
-        pIe = PlayerActionIndication();
+        pIe = GameEndNotification();
         decode_per(std::get<13>(pIe), pCtx);
+    }
+    else if (14 == type)
+    {
+        pIe = JoinRequest();
+        decode_per(std::get<14>(pIe), pCtx);
+    }
+    else if (15 == type)
+    {
+        pIe = JoinAccept();
+        decode_per(std::get<15>(pIe), pCtx);
+    }
+    else if (16 == type)
+    {
+        pIe = JoinReject();
+        decode_per(std::get<16>(pIe), pCtx);
+    }
+    else if (17 == type)
+    {
+        pIe = PlayerActionIndication();
+        decode_per(std::get<17>(pIe), pCtx);
     }
 }
 
@@ -1197,7 +1936,7 @@ inline void str(const char* pName, const TetrisProtocol& pIe, std::string& pCtx,
             pCtx += std::string(pName) + ":{";
         else
             pCtx += "{";
-        std::string name = "GameStartNotification";
+        std::string name = "AttackLinesRequest";
         str(name.c_str(), std::get<6>(pIe), pCtx, true);
         pCtx += "}";
     }
@@ -1207,7 +1946,7 @@ inline void str(const char* pName, const TetrisProtocol& pIe, std::string& pCtx,
             pCtx += std::string(pName) + ":{";
         else
             pCtx += "{";
-        std::string name = "PlayerUpdateNotification";
+        std::string name = "AttackLinesResponse";
         str(name.c_str(), std::get<7>(pIe), pCtx, true);
         pCtx += "}";
     }
@@ -1217,7 +1956,7 @@ inline void str(const char* pName, const TetrisProtocol& pIe, std::string& pCtx,
             pCtx += std::string(pName) + ":{";
         else
             pCtx += "{";
-        std::string name = "BoardUpdateNotification";
+        std::string name = "AttackIndication";
         str(name.c_str(), std::get<8>(pIe), pCtx, true);
         pCtx += "}";
     }
@@ -1227,7 +1966,7 @@ inline void str(const char* pName, const TetrisProtocol& pIe, std::string& pCtx,
             pCtx += std::string(pName) + ":{";
         else
             pCtx += "{";
-        std::string name = "GameOverNotification";
+        std::string name = "GameStartNotification";
         str(name.c_str(), std::get<9>(pIe), pCtx, true);
         pCtx += "}";
     }
@@ -1237,7 +1976,7 @@ inline void str(const char* pName, const TetrisProtocol& pIe, std::string& pCtx,
             pCtx += std::string(pName) + ":{";
         else
             pCtx += "{";
-        std::string name = "JoinRequest";
+        std::string name = "PlayerUpdateNotification";
         str(name.c_str(), std::get<10>(pIe), pCtx, true);
         pCtx += "}";
     }
@@ -1247,7 +1986,7 @@ inline void str(const char* pName, const TetrisProtocol& pIe, std::string& pCtx,
             pCtx += std::string(pName) + ":{";
         else
             pCtx += "{";
-        std::string name = "JoinAccept";
+        std::string name = "BoardUpdateNotification";
         str(name.c_str(), std::get<11>(pIe), pCtx, true);
         pCtx += "}";
     }
@@ -1257,7 +1996,7 @@ inline void str(const char* pName, const TetrisProtocol& pIe, std::string& pCtx,
             pCtx += std::string(pName) + ":{";
         else
             pCtx += "{";
-        std::string name = "JoinReject";
+        std::string name = "GameOverNotification";
         str(name.c_str(), std::get<12>(pIe), pCtx, true);
         pCtx += "}";
     }
@@ -1267,8 +2006,48 @@ inline void str(const char* pName, const TetrisProtocol& pIe, std::string& pCtx,
             pCtx += std::string(pName) + ":{";
         else
             pCtx += "{";
-        std::string name = "PlayerActionIndication";
+        std::string name = "GameEndNotification";
         str(name.c_str(), std::get<13>(pIe), pCtx, true);
+        pCtx += "}";
+    }
+    else if (14 == type)
+    {
+        if (pName)
+            pCtx += std::string(pName) + ":{";
+        else
+            pCtx += "{";
+        std::string name = "JoinRequest";
+        str(name.c_str(), std::get<14>(pIe), pCtx, true);
+        pCtx += "}";
+    }
+    else if (15 == type)
+    {
+        if (pName)
+            pCtx += std::string(pName) + ":{";
+        else
+            pCtx += "{";
+        std::string name = "JoinAccept";
+        str(name.c_str(), std::get<15>(pIe), pCtx, true);
+        pCtx += "}";
+    }
+    else if (16 == type)
+    {
+        if (pName)
+            pCtx += std::string(pName) + ":{";
+        else
+            pCtx += "{";
+        std::string name = "JoinReject";
+        str(name.c_str(), std::get<16>(pIe), pCtx, true);
+        pCtx += "}";
+    }
+    else if (17 == type)
+    {
+        if (pName)
+            pCtx += std::string(pName) + ":{";
+        else
+            pCtx += "{";
+        std::string name = "PlayerActionIndication";
+        str(name.c_str(), std::get<17>(pIe), pCtx, true);
         pCtx += "}";
     }
     if (!pIsLast)

@@ -164,7 +164,7 @@ using TerminoTraitsS = TerminoTraits<TerminoS>;
 using TerminoTraitsZ = TerminoTraits<TerminoZ>;
 using TerminoTraitsT = TerminoTraits<TerminoT>;
 
-enum Termino {I, L, J, O, S, Z, T, MAX, NONE};
+enum Termino {I, L, J, O, S, Z, T, NONE};
 
 namespace traits
 {

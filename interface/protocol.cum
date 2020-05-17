@@ -8,7 +8,6 @@ Type i8
     type(signed) width(8)
 };
 
-
 Type u8Optional
 {
     type(u8) optional()
@@ -19,6 +18,11 @@ Type u8array
     type(u8) dynamic_array(256)
 };
 
+Type u8arrayLarge
+{
+    type(u8) dynamic_array()
+};
+
 Type u16
 {
     type(unsigned) width(16)
@@ -27,7 +31,7 @@ Type u16
 Type u16Array
 {
     type(u16) dynamic_array(256)
-}
+};
 
 Type u64
 {
@@ -62,12 +66,99 @@ Enumeration Piece
     T
 };
 
+Enumeration CodeType
+{
+    TINY_ASM,
+    TINY_BIN
+};
+
+Enumeration DeleteReason
+{
+    DISCONNECTED,
+    KICKED
+};
+
+Enumeration PlayerMode
+{
+    SPECTATOR,
+    PLAYER
+};
+
+Enumeration AttackModeEnum
+{
+    DIVIDE,
+    TO_ALL,
+    TO_MOST,
+    TO_SELF,
+    ROULETTE
+};
+
+Enumeration CounteringType
+{
+    FULL,
+    LIMITED,
+    INSTANT
+};
+
+Enumeration BoardType
+{
+    SRS,
+    ARS,
+    CULTRIS
+};
+
+Sequence PlayerInfo
+{
+    u8 id,
+    String name,
+    PlayerMode mode
+};
+
+Type PlayerInfoList
+{
+    type(PlayerInfo) dynamic_array(256)
+};
+
+Sequence SequentialTargeting
+{
+    u16 targetChangeTimeoutMs
+};
+
+Sequence Random
+{
+    u64 seed
+};
+
+Sequence GameScript
+{
+    CodeType type,
+    u8arrayLarge code
+};
+
+Choice AttackMode
+{
+    SequentialTargeting,
+    AttackModeEnum,
+    Random,
+    GameScript
+};
+
+Sequence AttackModeCommon
+{
+    u16 attackDelayMs,
+    CounteringType counteringType
+};
+
 Sequence CreateGameRequest
 {
     u8 boardWidth,
     u8 boardHeight,
-    u16 targetChangeTimeoutMs,
-    u16 lockingTimeoutMs
+    u16 lockingTimeoutMs,
+    u16 clearTimeoutMs,
+    BoardType boardType,
+
+    AttackMode attackMode,
+    AttackModeCommon attackModeCommon
 };
 
 Sequence CreateGameReject
@@ -105,20 +196,16 @@ Sequence AttackLinesRequest
     u8 count   
 };
 
-Sequence AttackLinesRequest
+Sequence AttackLinesResponse
 {
     u16Array attackLinesToAddList 
 };
 
-Sequence Player
+Sequence AttackIndication
 {
-    String name,
-    u8 id
-};
-
-Type PlayerList
-{
-    type(Player) dynamic_array(256)
+    u8 player,
+    u8Optional attack,
+    u8Optional warningLines
 };
 
 Sequence GameStartNotification
@@ -126,9 +213,22 @@ Sequence GameStartNotification
     u8 spare
 };
 
+Sequence PlayerToRemove
+{
+    u8 id,
+    DeleteReason reason
+};
+
+Type PlayerToRemoveList
+{
+    type(PlayerToRemove) dynamic_array(256)
+};
+
 Sequence PlayerUpdateNotification
 {
-    PlayerList playerToAddList
+    PlayerInfoList playeToAddList,
+    PlayerInfoList playerToModifyList,
+    PlayerToRemoveList playerToDelete
 };
 
 Sequence Line
@@ -178,16 +278,24 @@ Sequence GameOverNotification
     u8 playerId
 };
 
+Sequence GameEndNotification
+{
+    u8 spare
+};
+
 Sequence JoinRequest
 {
-    u64 gameId
+    u64 gameId,
+    u64 secret
 };
 
 Sequence JoinAccept
 {
     u8 playerId,
+    u64 secret,
     u8 boardWidth,
-    u8 boardHeight
+    u8 boardHeight,
+    PlayerInfoList playerToAddList
 };
 
 Sequence JoinReject
@@ -212,11 +320,13 @@ Choice TetrisProtocol
     PieceResponse,
     AttackLinesRequest,
     AttackLinesResponse,
+    AttackIndication,
 
     GameStartNotification,
     PlayerUpdateNotification,
     BoardUpdateNotification,
     GameOverNotification,
+    GameEndNotification,
 
     JoinRequest,
     JoinAccept,

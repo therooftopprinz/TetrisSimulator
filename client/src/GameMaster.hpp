@@ -10,7 +10,7 @@
 namespace tetris
 {
 
-
+// TODO: StandarBoardGameMaster
 class GameMaster
 {
 public:
@@ -39,7 +39,7 @@ public:
         for (size_t i=0; i<pMsg.count; i++)
         {
             Piece p = Piece(mCurrentPiece);
-            mCurrentPiece = Termino((mCurrentPiece+1)%Termino::MAX);
+            mCurrentPiece = Termino((mCurrentPiece+1)%4);
             pieceResponse.pieceToAddList.emplace_back(p);
         }
 

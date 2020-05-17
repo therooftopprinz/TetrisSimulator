@@ -13,7 +13,7 @@ Game::Game(const GameConfig& pConfig, std::weak_ptr<IConnectionSession> pGmSessi
     mRunningWokerLock.unlock();
 }
 
-uint8_t Game::join(std::weak_ptr<IConnectionSession> pPlayerSession)
+bool Game::join(std::weak_ptr<IConnectionSession> pPlayerSession)
 {
     std::unique_lock<std::mutex> lg(mPlayersMutex);
 
@@ -21,7 +21,7 @@ uint8_t Game::join(std::weak_ptr<IConnectionSession> pPlayerSession)
 
     auto res = mPlayers.emplace(std::piecewise_construct, std::forward_as_tuple(id), std::forward_as_tuple(id, mBoardConfig, pPlayerSession));
     auto& player = res.first->second;
-    auto& playerCallbacks = player.getCallbacks();
+    auto& playerCallbacks = player.callbacks;
     playerCallbacks.generate = [&player, this]() -> Termino {return onBcbGenerate(player);};
     playerCallbacks.replace = [&player, this](std::vector<Line> pLines) {return onBcbReplace(player, std::move(pLines));};
     playerCallbacks.clear = [&player, this](std::vector<uint8_t> pLines) {return onBcbClear(player, std::move(pLines));};
@@ -32,7 +32,23 @@ uint8_t Game::join(std::weak_ptr<IConnectionSession> pPlayerSession)
     playerCallbacks.hold = [&player, this]() {return onBcbHold(player);};
     playerCallbacks.commit = [&player, this]() {return onBcbCommit(player);};
 
-    return id;
+
+    TetrisProtocol message = JoinAccept{};
+    auto& joinAccept = std::get<JoinAccept>(message);
+
+    joinAccept.playerId = id;
+    joinAccept.boardHeight = mBoardConfig.height;
+    joinAccept.boardWidth = mBoardConfig.width;
+
+    for (auto& i : mPlayers)
+    {
+        auto& player = i.second;
+        joinAccept.playerToAddList.emplace_back(PlayerInfo{id, player.name, player.mode});
+    }
+
+    pPlayerSession.lock()->send(message);
+
+    return true;
 }
 
 const TetrisBoardConfig& Game::getBoardConfig() const
@@ -75,13 +91,13 @@ void Game::handle(GameStartIndication& pMsg)
 
     for (auto& i : mPlayers)
     {
-        auto session = i.second.getConnectionSession();
+        auto session = i.second.connectionSession.lock();
         if (session)
         {
             session->send(message);
         }
 
-        i.second.reset();
+        i.second.resetGame();
         startPlayerTimer(i.second);
     }
 }
@@ -99,7 +115,7 @@ void Game::handle(PieceResponse& pMsg)
     }
     for (auto& i : mPlayers)
     {
-        i.second.getBoard().onEvent(board::TerminoAvailable{});
+        i.second.board->onEvent(board::TerminoAvailable{});
     }
 }
 
@@ -114,41 +130,45 @@ void Game::handle(PlayerActionIndication& pMsg)
     if (mPlayers.end() != foundIt)
     {
         auto& player =foundIt->second; 
-        auto& board = player.getBoard();
+        auto& board = player.board;
         if (Action::LEFT == pMsg.action)
         {
-            board.onEvent(board::Move{int8_t(-pMsg.count)});
+            board->onEvent(board::Move{int8_t(-pMsg.count)});
         }
         else if (Action::RIGHT == pMsg.action)
         {
-            board.onEvent(board::Move{int8_t(pMsg.count)});
+            board->onEvent(board::Move{int8_t(pMsg.count)});
         }
         else if (Action::ROT_CLOCK == pMsg.action)
         {
-            board.onEvent(board::Rotate{1});
+            board->onEvent(board::Rotate{1});
         }
         else if (Action::ROT_CCLOCK == pMsg.action)
         {
-            board.onEvent(board::Rotate{3});
+            board->onEvent(board::Rotate{-1});
         }
         else if (Action::ROT_180 == pMsg.action)
         {
-            board.onEvent(board::Rotate{2});
+            board->onEvent(board::Rotate{2});
         }
         else if (Action::SOFT_DROP == pMsg.action)
         {
-            board.onEvent(board::SoftDrop{});
+            board->onEvent(board::SoftDrop{});
         }
         else if (Action::HARD_DROP == pMsg.action)
         {
-            board.onEvent(board::Drop{});
+            board->onEvent(board::Drop{});
+        }
+        else if (Action::HOLD == pMsg.action)
+        {
+            board->onEvent(board::Hold{});
         }
     }
 }
 
 Termino Game::onBcbGenerate(PlayerContext& pPlayer)
 {
-    auto& index = pPlayer.getCurrentPiece();
+    auto& index = pPlayer.currentPieceIndex;
     if (index >= mTerminoCache.size())
     {
         TetrisProtocol message;
@@ -164,7 +184,7 @@ Termino Game::onBcbGenerate(PlayerContext& pPlayer)
 
 void Game::onBcbReplace(PlayerContext& pPlayer, std::vector<Line> pLines)
 {
-    auto& boardUpdateNotification = pPlayer.getBoardUpates();
+    auto& boardUpdateNotification = pPlayer.boardUpdates;
     for (auto i : pLines)
     {
         boardUpdateNotification.linesToReplaceList.emplace_back(i);
@@ -173,7 +193,7 @@ void Game::onBcbReplace(PlayerContext& pPlayer, std::vector<Line> pLines)
 
 void Game::onBcbClear(PlayerContext& pPlayer, std::vector<uint8_t> pLines)
 {
-    auto& boardUpdateNotification = pPlayer.getBoardUpates();
+    auto& boardUpdateNotification = pPlayer.boardUpdates;
     for (auto i : pLines)
     {
         boardUpdateNotification.linesToRemoveList.emplace_back(i);
@@ -182,19 +202,19 @@ void Game::onBcbClear(PlayerContext& pPlayer, std::vector<uint8_t> pLines)
 
 void Game::onBcbPiecePosition(PlayerContext& pPlayer, CellCoord pCoord)
 {
-    auto& boardUpdateNotification = pPlayer.getBoardUpates();
+    auto& boardUpdateNotification = pPlayer.boardUpdates;
     boardUpdateNotification.position.emplace(PiecePosition{pCoord.first, pCoord.second});
 }
 
 void Game::onBcbPlacePiece(PlayerContext& pPlayer, Termino pPiece)
 {
-    auto& boardUpdateNotification = pPlayer.getBoardUpates();
+    auto& boardUpdateNotification = pPlayer.boardUpdates;
     boardUpdateNotification.placement.emplace(Piece(pPiece));
 }
 
 void Game::onBcbRotate(PlayerContext& pPlayer, uint8_t pRot)
 {
-    auto& boardUpdateNotification = pPlayer.getBoardUpates();
+    auto& boardUpdateNotification = pPlayer.boardUpdates;
     boardUpdateNotification.rotation.emplace(pRot);
 }
 
@@ -205,7 +225,7 @@ void Game::onBcbPiecesAdded(PlayerContext& pPlayer, std::vector<Termino> pTermin
         return;
     }
 
-    auto& boardUpdateNotification = pPlayer.getBoardUpates();
+    auto& boardUpdateNotification = pPlayer.boardUpdates;
     for (auto i : pTerminos)
     {
         boardUpdateNotification.pieceToAddList.emplace_back(Piece(i));
@@ -214,20 +234,20 @@ void Game::onBcbPiecesAdded(PlayerContext& pPlayer, std::vector<Termino> pTermin
 
 void Game::onBcbHold(PlayerContext& pPlayer)
 {
-    // auto& boardUpdateNotification = pPlayer.getBoardUpates();
+    // auto& boardUpdateNotification = pPlayer.boardUpdates;
     // boardUpdateNotification.hold.emplace
 }
 
 void Game::onBcbCommit(PlayerContext& pPlayer)
 {
-    auto& boardUpdateNotification = pPlayer.getBoardUpates();
-    boardUpdateNotification.player = pPlayer.getId();
+    auto& boardUpdateNotification = pPlayer.boardUpdates;
+    boardUpdateNotification.player = pPlayer.id;
     TetrisProtocol message = std::move(boardUpdateNotification);
     boardUpdateNotification = {};
     send(message);
     for (auto& i : mPlayers)
     {
-        auto playerSession = i.second.getConnectionSession();
+        auto playerSession = i.second.connectionSession.lock();
         if (playerSession)
         {
             playerSession->send(message);
@@ -237,7 +257,7 @@ void Game::onBcbCommit(PlayerContext& pPlayer)
 
 void Game::startPlayerTimer(PlayerContext& pPlayer)
 {
-    auto& timerId = pPlayer.getLockTimerId();
+    auto& timerId = pPlayer.lockTimerId;
     mTimer.cancel(timerId);
     auto timediff = std::chrono::nanoseconds(mConfig.lockingTimeout)*1000*1000;
     timerId = mTimer.schedule(timediff, [this, &pPlayer]{
@@ -249,15 +269,15 @@ void Game::startPlayerTimer(PlayerContext& pPlayer)
 
 void Game::onLockingTimeout(PlayerContext& pPlayer)
 {
-    auto& board = pPlayer.getBoard();
-    board.onEvent(board::Lock{});
-    if (!board.isGameOver())
+    auto& board = pPlayer.board;
+    board->onEvent(board::Lock{});
+    if (!board->isGameOver())
     {
         startPlayerTimer(pPlayer);
         return;
     }
 
-    pPlayer.getLockTimerId() = -1;
+    pPlayer.lockTimerId = -1;
 }
 
 void Game::send(TetrisProtocol& pMessage)

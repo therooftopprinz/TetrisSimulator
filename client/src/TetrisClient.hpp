@@ -6,6 +6,7 @@
 #include <cstring>
 #include <cstdio>
 #include <iostream>
+#include <variant>
 
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -20,7 +21,7 @@
 
 #include <interface/protocol.hpp>
 
-#include <common/TetrisBoard.hpp>
+#include <common/StandardTetrisBoard.hpp>
 
 #include <ITetrisClient.hpp>
 #include <GameMaster.hpp>
@@ -254,12 +255,15 @@ private:
         createGameRequest.boardHeight = 24;
         createGameRequest.boardWidth = 10;
         createGameRequest.lockingTimeoutMs = 1000;
-        createGameRequest.targetChangeTimeoutMs = 2000;
+        createGameRequest.attackMode = SequentialTargeting{};
+        auto& attackMode = std::get<SequentialTargeting>(createGameRequest.attackMode);
+        attackMode.targetChangeTimeoutMs = 2000;
+        createGameRequest.attackModeCommon.attackDelayMs = 0;
+        createGameRequest.attackModeCommon.counteringType = CounteringType::FULL;
 
         auto width = pArgs.argAs<int>("width");
         auto height = pArgs.argAs<int>("height");
         auto lockTimeout = pArgs.argAs<int>("lock");
-        auto targetTimeout = pArgs.argAs<int>("target");
 
         if (width)
         {
@@ -274,11 +278,6 @@ private:
         if (lockTimeout)
         {
             createGameRequest.lockingTimeoutMs = *lockTimeout;
-        }
-
-        if (targetTimeout)
-        {
-            createGameRequest.targetChangeTimeoutMs = *targetTimeout;
         }
 
         send(message);

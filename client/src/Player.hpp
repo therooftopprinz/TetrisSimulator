@@ -9,7 +9,7 @@
 #include <unordered_map>
 
 #include <common/Terminoes.hpp>
-#include <common/TetrisBoard.hpp>
+#include <common/StandardTetrisBoard.hpp>
 
 #include <ITetrisClient.hpp>
 
@@ -162,6 +162,21 @@ private:
         playerActionIndication.player = mPlayerId;
         playerActionIndication.count = 1;
         playerActionIndication.action = Action::HARD_DROP;
+        mClient.send(message);
+    }
+
+    void onEvent(const board::Hold& pEvent)
+    {
+        if (!mGameStarted)
+        {
+            return;
+        }
+
+        TetrisProtocol message = PlayerActionIndication{};
+        auto& playerActionIndication = std::get<PlayerActionIndication>(message);
+        playerActionIndication.player = mPlayerId;
+        playerActionIndication.count = 1;
+        playerActionIndication.action = Action::HOLD;
         mClient.send(message);
     }
 
@@ -365,6 +380,10 @@ private:
             {
                 onEvent(board::SoftDrop{});
             }
+        }
+        else if ('w' == pKey)
+        {
+            onEvent(board::Hold{});
         }
         else if ('a' == pKey)
         {

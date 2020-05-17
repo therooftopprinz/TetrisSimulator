@@ -1,15 +1,15 @@
-#include <common/TetrisBoard.hpp>
+#include <common/StandardTetrisBoard.hpp>
 
 namespace tetris
 {
 
-TetrisBoard::TetrisBoard(const TetrisBoardConfig& pConfig, TetrisBoardCallbacks& pCallbacks)
+StandardTetrisBoard::StandardTetrisBoard(const TetrisBoardConfig& pConfig, TetrisBoardCallbacks& pCallbacks)
     : mConfig(pConfig)
     , mCallbacks(pCallbacks)
     , mData(pConfig.width, pConfig.height)
 {}
 
-void TetrisBoard::onEvent(const board::TerminoAvailable&)
+void StandardTetrisBoard::onEvent(const board::TerminoAvailable&)
 {
     if (NONE == mCurrent)
     {
@@ -22,21 +22,22 @@ void TetrisBoard::onEvent(const board::TerminoAvailable&)
     mCallbacks.commit();
 }
 
-const Bitmap& TetrisBoard::bitmap() const
+const Bitmap& StandardTetrisBoard::bitmap() const
 {
     return mData;
 }
 
-Bitmap& TetrisBoard::bitmap()
+Bitmap& StandardTetrisBoard::bitmap()
 {
     return mData;
 }
 
-bool TetrisBoard::isGameOver() const
+bool StandardTetrisBoard::isGameOver() const
 {
     return mGameOver;
 }
-void TetrisBoard::reset()
+
+void StandardTetrisBoard::reset()
 {
     mPieceList.clear();
     mData.reset();
@@ -46,7 +47,7 @@ void TetrisBoard::reset()
     mCallbacks.commit();
 }
 
-void TetrisBoard::doEvent(const board::Move& pEvent)
+void StandardTetrisBoard::onEvent(const board::Move& pEvent)
 {
     int direction = pEvent.offset > 0 ? 1 : -1;
     int count = std::abs(pEvent.offset);
@@ -69,15 +70,21 @@ void TetrisBoard::doEvent(const board::Move& pEvent)
 
     mXY.first = xpos;
     mCallbacks.piecePosition(mXY);
+    mCallbacks.commit();
 }
 
-void TetrisBoard::doEvent(const board::Rotate& pEvent)
+void StandardTetrisBoard::onEvent(const board::Rotate& pEvent)
 {
     if (0 == pEvent.count)
     {
         return;
     }
-    
+
+    // TODO: Extract rotation logic via liskov
+    // proposed interface
+    // class IRotator:
+    // + CellCoord check(Bitmap pBitmap, Termino pTermino, uint8_t pOrient, uin8_t pEnd)
+
     uint8_t origRot = mRot;
     uint8_t count = std::abs(pEvent.count) % 4;
     mRot = pEvent.count > 0 ? mRot + count : mRot + (4 - count);
@@ -98,6 +105,7 @@ void TetrisBoard::doEvent(const board::Rotate& pEvent)
 
             accepted = pos;
             isAccepted = true;
+            
             return true;
         }
         return false;
@@ -137,12 +145,34 @@ void TetrisBoard::doEvent(const board::Rotate& pEvent)
     mXY = accepted;
     mCallbacks.rotate(mRot);
     mCallbacks.piecePosition(mXY);
+    mCallbacks.commit();
 }
 
-void TetrisBoard::doEvent(const board::Hold&)
-{}
+void StandardTetrisBoard::onEvent(const board::Hold&)
+{
+    if (!mHasHoldCredit)
+    {
+        return;
+    }
 
-void TetrisBoard::doEvent(const board::Drop&)
+    mHasHoldCredit = false;
+
+    if (mHold)
+    {
+        auto current = mCurrent;
+        auto held = *mHold;
+        mHold.emplace(current);
+        nextPiece(held);
+    }
+    else
+    {
+        mHold.emplace(mCurrent);
+        nextPiece();
+    }
+    mCallbacks.commit();
+}
+
+void StandardTetrisBoard::onEvent(const board::Drop&)
 {
     auto ypos = mXY.second;
     while (true)
@@ -158,7 +188,7 @@ void TetrisBoard::doEvent(const board::Drop&)
     lock();
 }
 
-void TetrisBoard::doEvent(const board::SoftDrop&)
+void StandardTetrisBoard::onEvent(const board::SoftDrop&)
 {
     auto ypos = mXY.second;
     while (true)
@@ -177,9 +207,10 @@ void TetrisBoard::doEvent(const board::SoftDrop&)
         ypos -= 1;
     }
     mCallbacks.piecePosition(mXY);
+    mCallbacks.commit();
 }
 
-void TetrisBoard::doEvent(const board::Lock&)
+void StandardTetrisBoard::onEvent(const board::Lock&)
 {
     auto res = (*mCurrentCheckerFn)(mData, mXY.first, mXY.second-1, mCurrentTransformer);
     if (res)
@@ -190,10 +221,11 @@ void TetrisBoard::doEvent(const board::Lock&)
     {
         mXY.second -= 1;
         mCallbacks.piecePosition(mXY);
+        mCallbacks.commit();
     }
 }
 
-void TetrisBoard::lock()
+void StandardTetrisBoard::lock()
 {
     (*mCurrentSetterFn)(mData, mXY.first, mXY.second, mCurrentTransformer);
     auto startLine = mXY.second;
@@ -228,10 +260,11 @@ void TetrisBoard::lock()
 
     mCallbacks.clear(std::move(lineRemoved));
 
+    mHasHoldCredit = true;
     nextPiece();
 }
 
-void TetrisBoard::initializeCurrentTermino(Termino pTerm)
+void StandardTetrisBoard::initializeCurrentTermino(Termino pTerm)
 {
     mCurrent = pTerm;
     mRot = 0;
@@ -246,22 +279,31 @@ void TetrisBoard::initializeCurrentTermino(Termino pTerm)
     mXY = CellCoord{x,y};
 }
 
-void TetrisBoard::nextPiece()
+void StandardTetrisBoard::nextPiece(std::optional<Termino> pNext)
 {
-    if (!mPieceList.size())
+    if (!pNext && !mPieceList.size())
     {
         if (!requestPiece())
         {
+            mCallbacks.commit();
             return;
         }
     }
 
-    initializeCurrentTermino(mPieceList.front());
-    mPieceList.pop_front();
+    if (!pNext)
+    {
+        initializeCurrentTermino(mPieceList.front());
+        mPieceList.pop_front();
+    }
+    else
+    {
+        initializeCurrentTermino(*pNext);
+    }
 
-    auto res =  (*mCurrentCheckerFn)(mData, mXY.first, mXY.second, mCurrentTransformer);
+    auto res = (*mCurrentCheckerFn)(mData, mXY.first, mXY.second, mCurrentTransformer);
     if (0 != res)
     {
+        mCallbacks.commit();
         mCallbacks.gameOver();
         return;
     }
@@ -270,9 +312,10 @@ void TetrisBoard::nextPiece()
     mCallbacks.piecePosition(mXY);
 
     requestPiece();
+    mCallbacks.commit();
 }
 
-bool TetrisBoard::requestPiece()
+bool StandardTetrisBoard::requestPiece()
 {
     std::vector<Termino> pieces;
     while (5 > mPieceList.size())
@@ -290,7 +333,7 @@ bool TetrisBoard::requestPiece()
     return mPieceList.size();
 }
 
-TransformFn TetrisBoard::createTransformerFromRotator(traits::RotatorFn& pRotator)
+TransformFn StandardTetrisBoard::createTransformerFromRotator(traits::RotatorFn& pRotator)
 {
     return [this, &pRotator](CellCoord pCoord)
         {

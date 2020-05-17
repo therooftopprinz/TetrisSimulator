@@ -13,7 +13,7 @@
 
 #include <interface/protocol.hpp>
 
-#include <common/TetrisBoard.hpp>
+#include <common/StandardTetrisBoard.hpp>
 
 #include <ITetrisSimulator.hpp>
 #include <IConnectionSession.hpp>
@@ -28,68 +28,35 @@ struct GameConfig
     uint16_t lockingTimeout;
 };
 
-class PlayerContext
+struct PlayerContext
 {
 public:
     PlayerContext(uint8_t pPlayerId, TetrisBoardConfig& pConfig, std::weak_ptr<IConnectionSession> pConnectionSession)
-        : mPlayerId(pPlayerId)
-        , mBoard(pConfig, mCallbacks)
-        , mConnectionSession(pConnectionSession)
+        : id(pPlayerId)
+        , board(std::make_unique<StandardTetrisBoard>(pConfig, callbacks))
+        , connectionSession(pConnectionSession)
     {}
 
-    TetrisBoard& getBoard()
+    PlayerContext() = delete;
+
+    void resetGame()
     {
-        return mBoard;
+        boardUpdates = {};
+        lockTimerId = -1;
+        currentPieceIndex = 0;
+        board.reset();
     }
 
-    uint32_t& getCurrentPiece()
-    {
-        return mCurrentPieceIndex;
-    }
-
-    std::shared_ptr<IConnectionSession> getConnectionSession()
-    {
-        return mConnectionSession.lock();
-    }
-
-    uint8_t getId()
-    {
-        return mPlayerId;
-    }
-
-    TetrisBoardCallbacks& getCallbacks()
-    {
-        return mCallbacks;
-    }
-
-    BoardUpdateNotification& getBoardUpates()
-    {
-        return mBoardUpdates;
-    }
-
-    int& getLockTimerId()
-    {
-        return mLockTimerId;
-    }
-
-    void reset()
-    {
-        mBoardUpdates = {};
-        mLockTimerId = -1;
-        mCurrentPieceIndex = 0;
-        mBoard.reset();
-    }
-
-private:
-    uint8_t mPlayerId;
-    int mLockTimerId = -1;
-    TetrisBoardCallbacks mCallbacks;
-    uint32_t mCurrentPieceIndex = 0;
-    TetrisBoard mBoard;
-    std::weak_ptr<IConnectionSession> mConnectionSession;
-    BoardUpdateNotification mBoardUpdates;
+    uint8_t id;
+    std::string name = "Noname";
+    PlayerMode mode = PlayerMode::PLAYER;
+    int lockTimerId = -1;
+    TetrisBoardCallbacks callbacks;
+    uint32_t currentPieceIndex = 0;
+    std::unique_ptr<ITetrisBoard> board;
+    std::weak_ptr<IConnectionSession> connectionSession;
+    BoardUpdateNotification boardUpdates;
 };
-
 
 using GameEvent = std::variant<TetrisProtocol, bfc::LightFn<void()>>;
 
@@ -100,7 +67,7 @@ public:
     Game (const Game&) = delete;
     void operator=(const Game&) = delete;
 
-    uint8_t join(std::weak_ptr<IConnectionSession> pPlayerSession);
+    bool join(std::weak_ptr<IConnectionSession> pPlayerSession);
 
     template <typename T>
     void onMsg(T&& pMsg)

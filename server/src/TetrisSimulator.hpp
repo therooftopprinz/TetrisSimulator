@@ -17,7 +17,7 @@
 
 #include <logless/Logger.hpp>
 
-#include <common/TetrisBoard.hpp>
+#include <common/StandardTetrisBoard.hpp>
 #include <ConnectionSession.hpp>
 #include <Game.hpp>
 #include <ITetrisSimulator.hpp>

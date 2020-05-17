@@ -10,27 +10,11 @@
 
 #include <interface/protocol.hpp>
 
-#include <common/Bitmap.hpp>
-#include <common/TetrisBoardEvents.hpp>
+#include <common/ITetrisBoard.hpp>
 #include <common/Terminoes.hpp>
 
 namespace tetris
 {
-
-struct TetrisBoardCallbacks
-{
-    bfc::LightFn<Termino()> generate;
-    bfc::LightFn<void(std::vector<Line>)> replace;
-    bfc::LightFn<void(std::vector<Line>)> insert;
-    bfc::LightFn<void(std::vector<uint8_t>)> clear;
-    bfc::LightFn<void(CellCoord)> piecePosition;
-    bfc::LightFn<void(Termino)> placePiece;
-    bfc::LightFn<void(uint8_t)> rotate;
-    bfc::LightFn<void(std::vector<Termino>)> piecesAdded;
-    bfc::LightFn<void()> hold;
-    bfc::LightFn<void()> commit;
-    bfc::LightFn<void()> gameOver;
-};
 
 struct TetrisBoardConfig
 {
@@ -38,40 +22,30 @@ struct TetrisBoardConfig
     uint8_t height;
 };
 
-class TetrisBoard
+class StandardTetrisBoard : public ITetrisBoard
 {
 public:
 
-    TetrisBoard(const TetrisBoardConfig& pConfig, TetrisBoardCallbacks& pCallbacks);
+    StandardTetrisBoard(const TetrisBoardConfig& pConfig, TetrisBoardCallbacks& pCallbacks);
 
-    template <typename T>
-    void onEvent(const T& pEvent)
-    {
-        if (NONE == mCurrent)
-        {
-            return;
-        }
-        doEvent(pEvent);
-        mCallbacks.commit();
-    }
-
+    void onEvent(const board::Move& pEvent);
+    void onEvent(const board::Rotate& pEvent);
+    void onEvent(const board::Hold&);
+    void onEvent(const board::Drop&);
+    void onEvent(const board::SoftDrop&);
+    void onEvent(const board::Lock&);
     void onEvent(const board::TerminoAvailable&);
+
     const Bitmap& bitmap() const;
     Bitmap& bitmap();
     bool isGameOver() const;
     void reset();
 
 private:
-    void doEvent(const board::Move& pEvent);
-    void doEvent(const board::Rotate& pEvent);
-    void doEvent(const board::Hold&);
-    void doEvent(const board::Drop&);
-    void doEvent(const board::SoftDrop&);
-    void doEvent(const board::Lock&);
 
     void lock();
     void initializeCurrentTermino(Termino pTerm);
-    void nextPiece();
+    void nextPiece(std::optional<Termino> pNext = std::nullopt);
     bool requestPiece();
     TransformFn createTransformerFromRotator(traits::RotatorFn& pRotator);
 
@@ -83,6 +57,7 @@ private:
 
     Termino mCurrent = NONE;
     std::optional<Termino> mHold;
+    bool mHasHoldCredit = false;
 
     traits::CheckerFn* mCurrentCheckerFn = nullptr;
     TransformFn mCurrentTransformer;

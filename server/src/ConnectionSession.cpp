@@ -132,15 +132,10 @@ void ConnectionSession::onMsg(JoinRequest& pMsg)
         return;
     }
 
-    mGame = game;
-
-    message = JoinAccept{};
-    auto& joinAccept = std::get<JoinAccept>(message);
-
-    joinAccept.playerId = mGame->join(shared_from_this());
-    joinAccept.boardHeight = mGame->getBoardConfig().height;
-    joinAccept.boardWidth = mGame->getBoardConfig().width;
-    send(message);
+    if (game->join(shared_from_this()))
+    {
+        mGame = game;
+    }
 }
 
 void ConnectionSession::send(TetrisProtocol& pMessage)
