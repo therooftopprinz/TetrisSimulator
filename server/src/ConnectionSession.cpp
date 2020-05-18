@@ -30,6 +30,10 @@ void ConnectionSession::reset()
     mFd = -1;
 }
 
+void ConnectionSession::disassociateGame()
+{
+}
+
 void ConnectionSession::handleRead()
 {
     int readSize = 0;
@@ -96,7 +100,7 @@ void ConnectionSession::decodeMessage(std::byte* pRaw, size_t pSize)
         }, message);
 }
 
-void ConnectionSession::onMsg(CreateGameRequest& pMsg)
+void ConnectionSession::onMsg(CreateGameRequest&& pMsg)
 {
     TetrisProtocol message;
     if (IDLE != mSessionMode)
@@ -106,11 +110,7 @@ void ConnectionSession::onMsg(CreateGameRequest& pMsg)
     else
     {
         mSessionMode = GM;
-        GameConfig config = {};
-        config.height = pMsg.boardHeight;
-        config.width = pMsg.boardWidth;
-        config.lockingTimeout = pMsg.lockingTimeoutMs;
-        mGame = std::make_shared<Game>(config, shared_from_this(), mTp, mTimer);
+        mGame = std::make_shared<Game>(std::move(pMsg), shared_from_this(), mTp, mTimer);
         message = CreateGameAccept{};
         auto& createGameAccept = std::get<CreateGameAccept>(message);
         createGameAccept.gameId = mTetrisSim.createGame(mGame);
@@ -119,7 +119,7 @@ void ConnectionSession::onMsg(CreateGameRequest& pMsg)
     send(message);
 }
 
-void ConnectionSession::onMsg(JoinRequest& pMsg)
+void ConnectionSession::onMsg(JoinRequest&& pMsg)
 {
     TetrisProtocol message;
 
@@ -132,10 +132,8 @@ void ConnectionSession::onMsg(JoinRequest& pMsg)
         return;
     }
 
-    if (game->join(shared_from_this()))
-    {
-        mGame = game;
-    }
+    game->join(pMsg, shared_from_this());
+    mGame = game;
 }
 
 void ConnectionSession::send(TetrisProtocol& pMessage)

@@ -39,7 +39,7 @@ public:
         for (size_t i=0; i<pMsg.count; i++)
         {
             Piece p = Piece(mCurrentPiece);
-            mCurrentPiece = Termino((mCurrentPiece+1)%4);
+            mCurrentPiece = Termino((mCurrentPiece+1)%7);
             pieceResponse.pieceToAddList.emplace_back(p);
         }
 

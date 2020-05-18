@@ -40,27 +40,29 @@ public:
     void decodeMessage(std::byte* pRaw, size_t pSize);
 
     template <typename T>
-    void onMsg(T& pMsg, TetrisProtocol& pParent)
+    void onMsg(T&& pMsg, TetrisProtocol& pParent)
     {
         if (mGame)
         {
-            mGame->onMsg(pParent);
+            mGame->onMsg(std::move(pParent));
         }
         else
         {
-            onMsg(pMsg);
+            onMsg(std::move(pMsg));
         }
     }
 
     template <typename T>
-    void onMsg(T&)
+    void onMsg(T&&)
     {
     }
 
 private:
 
-    void onMsg(CreateGameRequest& pMsg);
-    void onMsg(JoinRequest& pMsg);
+    void disassociateGame();
+
+    void onMsg(CreateGameRequest&& pMsg);
+    void onMsg(JoinRequest&& pMsg);
 
     void send(TetrisProtocol& pMessage);
 

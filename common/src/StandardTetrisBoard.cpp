@@ -225,6 +225,34 @@ void StandardTetrisBoard::onEvent(const board::Lock&)
     }
 }
 
+void StandardTetrisBoard::onEvent(const board::IncomingAttack& pEvent)
+{
+    mCallbacks.incomingAttack(pEvent.count);
+    mCallbacks.commit();
+}
+
+void StandardTetrisBoard::onEvent(const board::Attack& pEvent)
+{
+    std::vector<Line> inserted;
+
+    // TODO: get line from game master
+    Bitline line = -1;
+    line >>= (sizeof(Bitline)*8) - mData.dimension().first;
+
+    line ^= 1;
+
+    for (auto i=0u; i<pEvent.count; i++)
+    {
+        mData.insertLine(0, line);
+        inserted.emplace_back(Line{0, line});
+    }
+
+    mCallbacks.insert(std::move(inserted));
+    mCallbacks.incomingAttack(0);
+    mCallbacks.commit();
+}
+
+
 void StandardTetrisBoard::lock()
 {
     (*mCurrentSetterFn)(mData, mXY.first, mXY.second, mCurrentTransformer);

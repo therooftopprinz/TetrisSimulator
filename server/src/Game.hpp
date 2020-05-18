@@ -4,12 +4,14 @@
 #include <cstring>
 #include <stdexcept>
 #include <variant>
+#include <functional>
 
 #include <sys/socket.h>
 #include <netinet/in.h> 
 
 #include <bfc/Timer.hpp>
 #include <bfc/ThreadPool.hpp>
+#include <bfc/FixedFunctionObject.hpp>
 
 #include <interface/protocol.hpp>
 
@@ -17,63 +19,28 @@
 
 #include <ITetrisSimulator.hpp>
 #include <IConnectionSession.hpp>
+#include <CommonAttacker.hpp>
+#include <PlayerContext.hpp>
 
 namespace tetris
 {
 
-struct GameConfig
-{
-    uint8_t width;
-    uint8_t height;
-    uint16_t lockingTimeout;
-};
+using GameEvent = std::variant<TetrisProtocol, bfc::LightFn<void()>, std::function<void()>>;
 
-struct PlayerContext
+class Game : public IExecutor
 {
 public:
-    PlayerContext(uint8_t pPlayerId, TetrisBoardConfig& pConfig, std::weak_ptr<IConnectionSession> pConnectionSession)
-        : id(pPlayerId)
-        , board(std::make_unique<StandardTetrisBoard>(pConfig, callbacks))
-        , connectionSession(pConnectionSession)
-    {}
-
-    PlayerContext() = delete;
-
-    void resetGame()
-    {
-        boardUpdates = {};
-        lockTimerId = -1;
-        currentPieceIndex = 0;
-        board.reset();
-    }
-
-    uint8_t id;
-    std::string name = "Noname";
-    PlayerMode mode = PlayerMode::PLAYER;
-    int lockTimerId = -1;
-    TetrisBoardCallbacks callbacks;
-    uint32_t currentPieceIndex = 0;
-    std::unique_ptr<ITetrisBoard> board;
-    std::weak_ptr<IConnectionSession> connectionSession;
-    BoardUpdateNotification boardUpdates;
-};
-
-using GameEvent = std::variant<TetrisProtocol, bfc::LightFn<void()>>;
-
-class Game
-{
-public:
-    Game(const GameConfig& pConfig, std::weak_ptr<IConnectionSession> pGmSession, bfc::ThreadPool<>& pTp, bfc::Timer<>& pTimer);
+    Game(CreateGameRequest&& pConfig, std::weak_ptr<IConnectionSession> pGmSession, bfc::ThreadPool<>& pTp, bfc::Timer<>& pTimer);
     Game (const Game&) = delete;
     void operator=(const Game&) = delete;
 
-    bool join(std::weak_ptr<IConnectionSession> pPlayerSession);
+    void join(JoinRequest& pMsg, std::weak_ptr<IConnectionSession> pPlayerSession);
 
     template <typename T>
     void onMsg(T&& pMsg)
     {
         std::unique_lock<std::mutex> lg(mGameEventsMutex);
-        mGameEvents.emplace_back(std::move(pMsg));
+        mGameEvents.emplace_back(std::forward<T>(pMsg));
         lg.unlock();
 
         if (!mRunningWokerLock.owns_lock() && mRunningWokerLock.try_lock())
@@ -95,11 +62,10 @@ public:
         }
     }
 
-    const TetrisBoardConfig& getBoardConfig() const;
-
 private:
 
     void trigger(bfc::LightFn<void()> pFn);
+    void trigger(std::function<void()> pFn);
     void runEvent(GameEvent& pEvent);
 
     template<typename T>
@@ -107,6 +73,7 @@ private:
     {}
 
     void handle(bfc::LightFn<void()>& pFn);
+    void handle(std::function<void()>& pFn);
     void handle(TetrisProtocol& pMsg);
     void handle(GameStartIndication& pMsg);
     void handle(PieceResponse& pMsg);
@@ -121,11 +88,14 @@ private:
     void onBcbPiecesAdded(PlayerContext& pPlayer, std::vector<Termino> pTerminos);
     void onBcbHold(PlayerContext& pPlayer);
     void onBcbCommit(PlayerContext& pPlayer);
+    void onBcbGameover(PlayerContext& pPlayer);
+    void onBcbIncomingAttack(PlayerContext& pPlayer, uint8_t);
 
     void startPlayerTimer(PlayerContext& pPlayer);
     void onLockingTimeout(PlayerContext& pPlayer);
 
     void send(TetrisProtocol& pMessage);
+    void send(PlayerContext& pPlayer, TetrisProtocol& pMessage);
 
     std::deque<GameEvent> mGameEvents;
     std::mutex mGameEventsMutex;
@@ -135,15 +105,16 @@ private:
     std::vector<Termino> mTerminoCache;
 
     TetrisBoardConfig mBoardConfig;
-    GameConfig mConfig;
+    CreateGameRequest mConfig;
     std::weak_ptr<IConnectionSession> mGmSession;
 
     bool mGameStarted = false;
-
+    unsigned mPlayingCount;
     std::unordered_map<uint8_t, PlayerContext> mPlayers;
     std::vector<uint8_t> mFreePlayersId;
     uint8_t mPlayersIdCtr = 0;
-    std::mutex mPlayersMutex;
+
+    std::unique_ptr<IAttacker> mAttacker;
 
     std::unordered_map<int, bfc::LightFn<void()>> mTriggers;
     int mTriggersId = 0;

@@ -19,10 +19,16 @@ struct TetrisBoardCallbacksMock
     }
 
     MOCK_METHOD0(generate_, Termino());
+    MOCK_METHOD1(replace, void(std::vector<Line>));
+    MOCK_METHOD1(insert, void(std::vector<Line>));
     MOCK_METHOD1(clear, void(std::vector<uint8_t>));
     MOCK_METHOD1(piecePosition, void(CellCoord));
     MOCK_METHOD1(placePiece, void(Termino));
+    MOCK_METHOD1(rotate, void(uint8_t));
+    MOCK_METHOD1(piecesAdded, void(std::vector<Termino>));
     MOCK_METHOD0(hold, void());
+    MOCK_METHOD0(commit, void());
+    MOCK_METHOD0(gameOver, void());
 
     bool autoGeneratePieceEnabled = false;
     int generateCounter = 0;
@@ -33,10 +39,16 @@ struct TetrisBoardTest : Test
     TetrisBoardTest()
     {
         rawCallbacks.generate = [this]() -> Termino {return callbacks.generate();};
+        rawCallbacks.replace = [this](std::vector<Line> pLines) {return callbacks.replace(std::move(pLines));};
+        rawCallbacks.insert = [this](std::vector<Line> pLines) {return callbacks.insert(std::move(pLines));};
         rawCallbacks.clear = [this](std::vector<uint8_t> pLines) {return callbacks.clear(std::move(pLines));};
         rawCallbacks.piecePosition = [this](CellCoord pCoord) {return callbacks.piecePosition(pCoord);};
         rawCallbacks.placePiece = [this](Termino pTermino) {return callbacks.placePiece(pTermino);};
+        rawCallbacks.rotate = [this](uint8_t pRot) {return callbacks.rotate(pRot);};
+        rawCallbacks.piecesAdded = [this](std::vector<Termino> pTerminos) {return callbacks.piecesAdded(std::move(pTerminos));};
         rawCallbacks.hold = [this]() {return callbacks.hold();};
+        rawCallbacks.commit = [this]() {return callbacks.commit();};
+        rawCallbacks.gameOver = [this]() {return callbacks.gameOver();};
     }
     TetrisBoardCallbacksMock callbacks;
     TetrisBoardCallbacks rawCallbacks;

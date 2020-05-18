@@ -14,6 +14,8 @@ struct ITetrisBoard
     virtual void onEvent(const board::SoftDrop&) = 0;
     virtual void onEvent(const board::Lock&) = 0;
     virtual void onEvent(const board::TerminoAvailable&) = 0;
+    virtual void onEvent(const board::IncomingAttack&) = 0;
+    virtual void onEvent(const board::Attack&) = 0;
 
     virtual const Bitmap& bitmap() const = 0;
     virtual Bitmap& bitmap() = 0;
@@ -34,6 +36,7 @@ struct TetrisBoardCallbacks
     bfc::LightFn<void()> hold;
     bfc::LightFn<void()> commit;
     bfc::LightFn<void()> gameOver;
+    bfc::LightFn<void(uint8_t)> incomingAttack;
 };
 
 

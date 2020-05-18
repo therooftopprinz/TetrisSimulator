@@ -35,6 +35,8 @@ public:
     void onEvent(const board::SoftDrop&);
     void onEvent(const board::Lock&);
     void onEvent(const board::TerminoAvailable&);
+    void onEvent(const board::IncomingAttack&);
+    void onEvent(const board::Attack&);
 
     const Bitmap& bitmap() const;
     Bitmap& bitmap();

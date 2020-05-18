@@ -86,6 +86,7 @@ Enumeration PlayerMode
 
 Enumeration AttackModeEnum
 {
+    SEQUENTIAL,
     DIVIDE,
     TO_ALL,
     TO_MOST,
@@ -119,11 +120,6 @@ Type PlayerInfoList
     type(PlayerInfo) dynamic_array(256)
 };
 
-Sequence SequentialTargeting
-{
-    u16 targetChangeTimeoutMs
-};
-
 Sequence Random
 {
     u64 seed
@@ -137,7 +133,6 @@ Sequence GameScript
 
 Choice AttackMode
 {
-    SequentialTargeting,
     AttackModeEnum,
     Random,
     GameScript
@@ -145,6 +140,7 @@ Choice AttackMode
 
 Sequence AttackModeCommon
 {
+    u16 targetChangeTimeoutMs,
     u16 attackDelayMs,
     CounteringType counteringType
 };
@@ -275,7 +271,7 @@ Sequence BoardUpdateNotification
 
 Sequence GameOverNotification
 {
-    u8 playerId
+    u8 player
 };
 
 Sequence GameEndNotification

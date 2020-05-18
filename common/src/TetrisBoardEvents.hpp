@@ -19,6 +19,16 @@ struct Rotate
     int8_t count;
 };
 
+struct Attack
+{
+    uint8_t count;
+};
+
+struct IncomingAttack
+{
+    uint8_t count;
+};
+
 struct Hold {};
 struct Drop {};
 struct SoftDrop {};
