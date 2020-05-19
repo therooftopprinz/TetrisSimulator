@@ -22,10 +22,10 @@ public:
     GameMaster(const GameMaster&&) = delete;
 
     template<typename T>
-    void onMsg(T& pMsg)
+    void onMsg(T&& pMsg)
     {}
 
-    void onMsg(PieceRequest& pMsg)
+    void onMsg(PieceRequest&& pMsg)
     {
         TetrisProtocol message;
         message = PieceResponse{};
@@ -46,12 +46,12 @@ public:
         mClient.send(message);
     }
 
-    void onMsg(BoardUpdateNotification& pMsg)
+    void onMsg(BoardUpdateNotification&& pMsg)
     {
 
     }
 
-    void onMsg(PlayerUpdateNotification& pMsg)
+    void onMsg(PlayerUpdateNotification&& pMsg)
     {
     }
 

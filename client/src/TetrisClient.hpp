@@ -37,6 +37,7 @@ struct TetrisClientConfig
     uint32_t operand;
     uint32_t ip;
     uint16_t port;
+    std::optional<std::string> cmd;
 };
 
 class TetrisClient : ITetrisClient
@@ -91,6 +92,15 @@ public:
             });
 
         enableConsole();
+        
+        if (pConfig.cmd)
+        {
+            auto cmd = *pConfig.cmd + "\n"; 
+            for (auto i : cmd)
+            {
+                consoleIn(i);
+            }
+        }
     }
 
     void run()
@@ -153,20 +163,20 @@ private:
         Logger::getInstance().flush();
 
         std::visit([this](auto& pMsg){
-                onMsg(pMsg);
+                onMsg(std::move(pMsg));
             }, message);
     }
 
     template <typename T>
-    void onMsg(T& pMsg)
+    void onMsg(T&& pMsg)
     {
         if (GM_ACTIVE == mState)
         {
-            mGm->onMsg(pMsg);
+            mGm->onMsg(std::move(pMsg));
         }
         else if(PLAYER_ACTIVE == mState)
         {
-            mPlayer->onMsg(pMsg);
+            mPlayer->onMsg(std::move(pMsg));
         }
         else
         {
@@ -174,7 +184,7 @@ private:
         }
     }
 
-    void onMsg(CreateGameAccept& pMsg)
+    void onMsg(CreateGameAccept&& pMsg)
     {
         if (GM_INIT != mState)
         {
@@ -185,7 +195,7 @@ private:
         consoleLog("[client]: Game created! id=", pMsg.gameId);
     }
 
-    void onMsg(CreateGameReject& pMsg)
+    void onMsg(CreateGameReject&& pMsg)
     {
         if (GM_INIT != mState)
         {
@@ -196,26 +206,20 @@ private:
         mGm.reset();
     }
 
-    void onMsg(JoinAccept& pMsg)
+    void onMsg(JoinAccept&& pMsg)
     {
         if (PLAYER_INIT != mState)
         {
             throw std::runtime_error("server-client expectation mismatch!");
         }
 
-        auto id = pMsg.playerId;
-
         mState = PLAYER_ACTIVE;
-        consoleLog("[client]: Player joined id=", unsigned(id), "!");
+        consoleLog("[client]: Player joined id=", unsigned(pMsg.player), "!");
 
-        TetrisBoardConfig config{};
-        config.height = pMsg.boardHeight;
-        config.width = pMsg.boardWidth;
-
-        mPlayer.emplace(id, (ITetrisClient&)*this, config);
+        mPlayer.emplace((ITetrisClient&)*this,  std::move(pMsg));
     }
 
-    void onMsg(JoinReject& pMsg)
+    void onMsg(JoinReject&& pMsg)
     {
         if (PLAYER_INIT != mState)
         {
@@ -255,15 +259,16 @@ private:
         createGameRequest.boardHeight = 24;
         createGameRequest.boardWidth = 10;
         createGameRequest.lockingTimeoutMs = 1000;
-        createGameRequest.attackMode = SequentialTargeting{};
-        auto& attackMode = std::get<SequentialTargeting>(createGameRequest.attackMode);
-        attackMode.targetChangeTimeoutMs = 2000;
+        auto& attackModeEnum = std::get<AttackModeEnum>(createGameRequest.attackMode);
+        attackModeEnum = AttackModeEnum::SEQUENTIAL;
+        createGameRequest.attackModeCommon.targetChangeTimeoutMs = 2000;
         createGameRequest.attackModeCommon.attackDelayMs = 0;
         createGameRequest.attackModeCommon.counteringType = CounteringType::FULL;
 
         auto width = pArgs.argAs<int>("width");
         auto height = pArgs.argAs<int>("height");
         auto lockTimeout = pArgs.argAs<int>("lock");
+        auto targetTimeout = pArgs.argAs<int>("target");
 
         if (width)
         {
@@ -278,6 +283,11 @@ private:
         if (lockTimeout)
         {
             createGameRequest.lockingTimeoutMs = *lockTimeout;
+        }
+
+        if (targetTimeout)
+        {
+            createGameRequest.attackModeCommon.targetChangeTimeoutMs = *targetTimeout;
         }
 
         send(message);

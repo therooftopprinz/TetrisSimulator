@@ -40,7 +40,6 @@ public:
 
     const Bitmap& bitmap() const;
     Bitmap& bitmap();
-    bool isGameOver() const;
     void reset();
 
 private:
@@ -70,7 +69,6 @@ private:
     TetrisBoardConfig mConfig;
     TetrisBoardCallbacks& mCallbacks;
     Bitmap mData;
-    bool mGameOver;
 };
 
 } // namespace tetris

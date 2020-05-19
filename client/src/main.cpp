@@ -59,9 +59,17 @@ int main(int argc, const char *argv[])
         }
     }
 
+    tetris::TetrisClientConfig config{};
+
     auto address = parseIpPort(options); 
 
-    tetris::TetrisClientConfig config{};
+    auto cmdIt = options.find("cmd");
+    if (options.end() != cmdIt)
+    {
+        config.cmd.emplace(cmdIt->second);
+    }
+
+
     config.ip = address.first;
     config.port = address.second;
     tetris::TetrisClient client(config);

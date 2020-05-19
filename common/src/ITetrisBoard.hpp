@@ -19,7 +19,6 @@ struct ITetrisBoard
 
     virtual const Bitmap& bitmap() const = 0;
     virtual Bitmap& bitmap() = 0;
-    virtual bool isGameOver() const = 0;
     virtual void reset() = 0;
 };
 
@@ -33,7 +32,7 @@ struct TetrisBoardCallbacks
     bfc::LightFn<void(Termino)> placePiece;
     bfc::LightFn<void(uint8_t)> rotate;
     bfc::LightFn<void(std::vector<Termino>)> piecesAdded;
-    bfc::LightFn<void()> hold;
+    bfc::LightFn<void(Termino)> hold;
     bfc::LightFn<void()> commit;
     bfc::LightFn<void()> gameOver;
     bfc::LightFn<void(uint8_t)> incomingAttack;

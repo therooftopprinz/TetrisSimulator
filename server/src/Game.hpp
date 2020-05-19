@@ -80,13 +80,14 @@ private:
     void handle(PlayerActionIndication& pMsg);
 
     Termino onBcbGenerate(PlayerContext& pPlayer);
+    void onBcbInsert(PlayerContext& pPlayer, std::vector<Line> pLines);
     void onBcbReplace(PlayerContext& pPlayer, std::vector<Line> pLines);
     void onBcbClear(PlayerContext& pPlayer, std::vector<uint8_t> pLines);
     void onBcbPiecePosition(PlayerContext& pPlayer, CellCoord pCoord);
     void onBcbPlacePiece(PlayerContext& pPlayer, Termino pPiece);
     void onBcbRotate(PlayerContext& pPlayer, uint8_t pRot);
     void onBcbPiecesAdded(PlayerContext& pPlayer, std::vector<Termino> pTerminos);
-    void onBcbHold(PlayerContext& pPlayer);
+    void onBcbHold(PlayerContext& pPlayer, Termino pTermino);
     void onBcbCommit(PlayerContext& pPlayer);
     void onBcbGameover(PlayerContext& pPlayer);
     void onBcbIncomingAttack(PlayerContext& pPlayer, uint8_t);

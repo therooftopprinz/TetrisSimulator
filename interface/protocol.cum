@@ -287,7 +287,7 @@ Sequence JoinRequest
 
 Sequence JoinAccept
 {
-    u8 playerId,
+    u8 player,
     u64 secret,
     u8 boardWidth,
     u8 boardHeight,

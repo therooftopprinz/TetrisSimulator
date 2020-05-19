@@ -1,6 +1,8 @@
 #ifndef __SEQUENTIALATTACKER_HPP__
 #define __SEQUENTIALATTACKER_HPP__
 
+#include <logless/Logger.hpp>
+
 #include <interface/protocol.hpp>
 
 #include <IAttacker.hpp>
@@ -37,14 +39,20 @@ public:
             return;
         }
 
+        Logless("CommonAttacker[_]: start mode=_", this, (unsigned)mMode);
+
         if (SEQUENTIAL == mMode)
         {
             mCurrentTarget = next(mPlayers.begin());
             if (mPlayers.end() == mCurrentTarget)
             {
+                Logless("CommonAttacker[_]: start cancelled!", this);
                 return;
             }
+
+            Logless("CommonAttacker[_]: currentTarget=_", this, (unsigned)mCurrentTarget->second.id);
             mCurrentTarget->second.receivedLines = 0;
+            mCurrentTarget->second.board->onEvent(board::IncomingAttack{0});
         }
 
         mRunning = true;
@@ -53,12 +61,24 @@ public:
 
     void stop()
     {
+        Logless("CommonAttacker[_]: stop", this);
         mRunning = false;
         mTimerId = -1;
     }
 
     void attack(PlayerContext& pPlayer, uint8_t pLines)
     {
+        if (!mRunning)
+        {
+            return;
+        }
+        
+        Logless("CommonAttacker[_]: attack dmg=_ src=_ dst=_", this, (unsigned)pLines, (unsigned)pPlayer.id, (unsigned)mCurrentTarget->second.id);
+
+        if (!pLines)
+        {
+            return;
+        }
         auto& player = mCurrentTarget->second;
         if (&pPlayer == &player)
         {
@@ -86,7 +106,7 @@ private:
     {
         while (mPlayers.end() != pCur)
         {
-            if (PlayerContext::ACTIVE == pCur->second.playState)
+            if (PlayerContext::PLAYING == pCur->second.internalMode)
             {
                 return pCur;
             }
@@ -117,6 +137,8 @@ private:
             return;
         }
 
+        Logless("CommonAttacker[_]: targetChangeTimeout!", this);
+
         if (SEQUENTIAL == mMode)
         {
             auto& player = mCurrentTarget->second;
@@ -127,7 +149,7 @@ private:
             }
             player.receivedLines = 0;
             auto prevTarget = mCurrentTarget;
-            mCurrentTarget = nextTarget(mCurrentTarget++);
+            mCurrentTarget = nextTarget(++mCurrentTarget);
 
             if (mPlayers.end() == mCurrentTarget)
             {
@@ -135,8 +157,12 @@ private:
                 if (mPlayers.end() == mCurrentTarget || prevTarget == mCurrentTarget)
                 {
                     stop();
+                    return;
                 }
             }
+
+            Logless("CommonAttacker[_]: currentTarget=_", this, (unsigned)mCurrentTarget->second.id);
+            mCurrentTarget->second.board->onEvent(board::IncomingAttack{0});
         }
 
         startTimer();
@@ -150,7 +176,7 @@ private:
     std::unordered_map<uint8_t, PlayerContext>::iterator mCurrentTarget;
 
     int mTimerId = -1;
-    bool mRunning = true;
+    bool mRunning = false;
 
     bfc::ThreadPool<>& mTp;
     bfc::Timer<>& mTimer;

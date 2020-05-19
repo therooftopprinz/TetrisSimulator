@@ -18,14 +18,17 @@ namespace tetris
 
 struct PlayerContext
 {
-    PlayerContext(const TetrisBoardConfig& pConfig)
-        : bitmap(pConfig.width, pConfig.height)
+    PlayerContext(const JoinAccept& pConfig)
+        : bitmap(pConfig.boardWidth, pConfig.boardHeight)
     {}
 
+    uint8_t id;
+    std::string name;
     Bitmap bitmap;
-    std::vector<Termino> queue;
+    std::deque<Termino> queue;
     std::optional<Termino> current;
     std::optional<Termino> hold;
+    std::optional<uint8_t> incoming;
     uint8_t rotation;
     int8_t x;
     int8_t y;
@@ -52,12 +55,19 @@ struct PlayerContext
 class Player
 {
 public:
-    Player(uint8_t pPlayerId, ITetrisClient& pClient, const TetrisBoardConfig& pConfig)
+    Player(ITetrisClient& pClient, JoinAccept&& pConfig)
         : mClient(pClient)
-        , mPlayerId(pPlayerId)
-        , mConfig(pConfig)
+        , mPlayerId(pConfig.player)
+        , mConfig(std::move(pConfig))
     {
-        mPlayers.emplace(std::piecewise_construct, std::forward_as_tuple(pPlayerId), std::forward_as_tuple(mConfig));
+        for (auto& i : mConfig.playerToAddList)
+        {
+            auto res = mPlayers.emplace(std::piecewise_construct, std::forward_as_tuple(i.id), std::forward_as_tuple(mConfig));
+            auto& player = res.first->second;
+            player.id = i.id;
+            player.name = i.name;
+        }
+
         mClient.disableConsole();
         mClient.setKeyHandler([this](char key) -> void {
                 keyIn(key);
@@ -69,7 +79,7 @@ public:
     Player(const Player&&) = delete;
 
     template<typename T>
-    void onMsg(T& pMsg)
+    void onMsg(T&& pMsg)
     {
         mLatencyMeasEnd = std::chrono::high_resolution_clock::now();
         if (mLatencyMeasEnabled)
@@ -78,12 +88,12 @@ public:
         }
         mLatencyMeasEnabled = false;
 
-        handle(pMsg);
+        handle(std::move(pMsg));
     }
 
 private:
     template<typename T>
-    void handle(T& pMsg)
+    void handle(T&& pMsg)
     {
     }
 
@@ -180,12 +190,28 @@ private:
         mClient.send(message);
     }
 
-    void handle(GameStartNotification& pMsg)
+    void handle(GameStartNotification&& pMsg)
     {
         mGameStarted = true;
     }
 
-    void handle(BoardUpdateNotification& pMsg)
+    void handle(GameEndNotification&& pMsg)
+    {
+        mGameStarted = false;
+    }
+
+    void handle(PlayerUpdateNotification&& pMsg)
+    {
+        for (auto& i : pMsg.playeToAddList)
+        {
+            auto res = mPlayers.emplace(std::piecewise_construct, std::forward_as_tuple(i.id), std::forward_as_tuple(mConfig));
+            auto& player = res.first->second;
+            player.id = i.id;
+            player.name = i.name;
+        }
+    }
+
+    void handle(BoardUpdateNotification&& pMsg)
     {
         if (!mGameStarted)
         {
@@ -196,9 +222,23 @@ private:
         if (mPlayers.end() != foundIt)
         {
             auto& player = foundIt->second;
+
+            if (pMsg.attackIndicator)
+            {
+                mCurrentTarget.emplace(player.id);
+                player.incoming.emplace(*pMsg.attackIndicator);
+            }
+            for (auto i : pMsg.pieceToAddList)
+            {
+                player.queue.emplace_back((Termino)i);
+            }
             if (pMsg.placement)
             {
                 player.initializeCurrentTermino(Termino(*pMsg.placement));
+                if (player.queue.size())
+                {
+                    player.queue.pop_front();
+                }
             }
             if (pMsg.rotation)
             {
@@ -240,11 +280,22 @@ private:
     {
         clearScreen();
         setCursor(0, mHeight-1);
-        print("Tetris Simulator Client [%dx%d]", mConfig.width, mConfig.height);
+        print("Tetris Simulator Client [%dx%d]", mConfig.boardWidth, mConfig.boardHeight);
 
         // main player
         auto& player = mPlayers.find(mPlayerId)->second;
         drawBoard(0,3, player);
+
+        // current target
+        if (mCurrentTarget)
+        {
+            auto foundIt = mPlayers.find(*mCurrentTarget);
+            if (mPlayers.end() != foundIt)
+            {
+                auto& player = foundIt->second;
+                drawBoard(30,3, player);
+            }
+        }
 
         setCursor(0, 1);
         print("key_input >> %3d %3d %3d", mKeyPressHistory[2], mKeyPressHistory[1], mKeyPressHistory[0]);
@@ -272,22 +323,60 @@ private:
     {
         // PLAYER BOARD
         setCursor(pX, pY);
-        for (unsigned i = 0; i<mConfig.width+2u; i++) putchar('#');
+        for (unsigned i = 0; i<mConfig.boardWidth+2u; i++) putchar('#');
 
-        setCursor(pX, pY+mConfig.height+1u);
-        for (unsigned i = 0; i<mConfig.width+2u; i++) putchar('#');
+        setCursor(pX, pY+mConfig.boardHeight+1u);
+        for (unsigned i = 0; i<mConfig.boardWidth+2u; i++) putchar('#');
 
-        for (unsigned i = 0; i<mConfig.height+1u; i++)
+        for (unsigned i = 0; i<mConfig.boardHeight+1u; i++)
         {
             setCursor(pX, pY+i);
             putchar('#');
         }
 
-        for (unsigned i = 0; i<mConfig.height+1u; i++)
+        for (unsigned i = 0; i<mConfig.boardHeight+1u; i++)
         {
-            setCursor(pX+mConfig.width+1, pY+i);
+            setCursor(pX+mConfig.boardWidth+1, pY+i);
             putchar('#');
         }
+
+        setCursor(pX, pY + mConfig.boardHeight + 3);
+        print("id:%d name:\"%s\"", pPlayer.id, pPlayer.name.c_str());
+
+        char hold= ' ';
+        char current = ' ';
+        std::string next;
+        int incoming = 0;
+
+        auto toChar = [](Termino pTerm) {
+                static const char* map = "ILJOSZT";
+                return map[(int)pTerm];
+            };
+
+        if (pPlayer.hold)
+        {
+            hold = toChar(*pPlayer.hold);
+        }
+        if (pPlayer.current)
+        {
+            hold = toChar(*pPlayer.current);
+        }
+        for (auto i : pPlayer.queue)
+        {
+            next.push_back(toChar(i));
+        }
+        if (pPlayer.current)
+        {
+            hold = toChar(*pPlayer.current);
+        }
+        if (pPlayer.incoming)
+        {
+            incoming = *pPlayer.incoming;
+        } 
+
+        setCursor(pX, pY + mConfig.boardHeight + 2);
+        print("hold:%c current:%c", hold, current);
+        print("next:%s incoming:%d", next.c_str(), incoming);
 
         auto bitmap = pPlayer.bitmap;
         for (auto i=0u; i<bitmap.dimension().second; i++)
@@ -403,10 +492,10 @@ private:
         }
     }
 
-    unsigned mWidth = 50;
-    unsigned mHeight = 30;
+    unsigned mWidth = 80;
+    unsigned mHeight = 40;
 
-    uint32_t mFrame[50*30];
+    uint32_t mFrame[80*40];
     size_t mCursor;
 
     std::deque<char> mKeyPressHistory = std::deque<char>(3);
@@ -418,8 +507,10 @@ private:
 
     ITetrisClient& mClient;
     uint8_t mPlayerId; 
-    TetrisBoardConfig mConfig;
+    JoinAccept mConfig;
     std::unordered_map<uint8_t, PlayerContext> mPlayers;
+
+    std::optional<uint8_t> mCurrentTarget;
 
     bool mGameStarted = false;
 };

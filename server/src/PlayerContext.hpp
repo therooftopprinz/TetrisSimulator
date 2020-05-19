@@ -27,7 +27,7 @@ public:
     {
         boardUpdates = {};
         lockTimerId = -1;
-        playState = ACTIVE; 
+        internalMode = PLAYING; 
         currentPieceIndex = 0;
         receivedLines = 0;
         board->reset();
@@ -35,8 +35,8 @@ public:
 
     uint8_t id;
     std::string name = "Noname";
-    PlayerMode mode;
-    enum PlayState {IDLE, ACTIVE} playState = IDLE;
+    enum InternalMode{PLAYING, GAMEOVER} internalMode = GAMEOVER;
+    PlayerMode playerMode = PlayerMode::PLAYER;
     int receivedLines;
     int lockTimerId = -1;
     TetrisBoardCallbacks callbacks;
@@ -44,6 +44,7 @@ public:
     std::unique_ptr<ITetrisBoard> board;
     std::weak_ptr<IConnectionSession> connectionSession;
     BoardUpdateNotification boardUpdates;
+    unsigned boardUpdatesCount = 0;
 };
 
 } // tetris

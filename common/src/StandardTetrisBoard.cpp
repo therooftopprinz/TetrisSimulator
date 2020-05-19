@@ -32,16 +32,10 @@ Bitmap& StandardTetrisBoard::bitmap()
     return mData;
 }
 
-bool StandardTetrisBoard::isGameOver() const
-{
-    return mGameOver;
-}
-
 void StandardTetrisBoard::reset()
 {
     mPieceList.clear();
     mData.reset();
-    mGameOver = false;
 
     nextPiece();
     mCallbacks.commit();
@@ -162,6 +156,7 @@ void StandardTetrisBoard::onEvent(const board::Hold&)
         auto current = mCurrent;
         auto held = *mHold;
         mHold.emplace(current);
+        mCallbacks.hold(current);
         nextPiece(held);
     }
     else

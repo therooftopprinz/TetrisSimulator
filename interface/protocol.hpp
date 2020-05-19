@@ -113,7 +113,7 @@
 // Sequence:  GameEndNotification ('u8', 'spare')
 // Sequence:  JoinRequest ('u64', 'gameId')
 // Sequence:  JoinRequest ('u64', 'secret')
-// Sequence:  JoinAccept ('u8', 'playerId')
+// Sequence:  JoinAccept ('u8', 'player')
 // Sequence:  JoinAccept ('u64', 'secret')
 // Sequence:  JoinAccept ('u8', 'boardWidth')
 // Sequence:  JoinAccept ('u8', 'boardHeight')
@@ -373,7 +373,7 @@ struct JoinRequest
 
 struct JoinAccept
 {
-    u8 playerId;
+    u8 player;
     u64 secret;
     u8 boardWidth;
     u8 boardHeight;
@@ -1554,7 +1554,7 @@ inline void str(const char* pName, const JoinRequest& pIe, std::string& pCtx, bo
 inline void encode_per(const JoinAccept& pIe, cum::per_codec_ctx& pCtx)
 {
     using namespace cum;
-    encode_per(pIe.playerId, pCtx);
+    encode_per(pIe.player, pCtx);
     encode_per(pIe.secret, pCtx);
     encode_per(pIe.boardWidth, pCtx);
     encode_per(pIe.boardHeight, pCtx);
@@ -1564,7 +1564,7 @@ inline void encode_per(const JoinAccept& pIe, cum::per_codec_ctx& pCtx)
 inline void decode_per(JoinAccept& pIe, cum::per_codec_ctx& pCtx)
 {
     using namespace cum;
-    decode_per(pIe.playerId, pCtx);
+    decode_per(pIe.player, pCtx);
     decode_per(pIe.secret, pCtx);
     decode_per(pIe.boardWidth, pCtx);
     decode_per(pIe.boardHeight, pCtx);
@@ -1584,7 +1584,7 @@ inline void str(const char* pName, const JoinAccept& pIe, std::string& pCtx, boo
     }
     size_t nOptional = 0;
     size_t nMandatory = 5;
-    str("playerId", pIe.playerId, pCtx, !(--nMandatory+nOptional));
+    str("player", pIe.player, pCtx, !(--nMandatory+nOptional));
     str("secret", pIe.secret, pCtx, !(--nMandatory+nOptional));
     str("boardWidth", pIe.boardWidth, pCtx, !(--nMandatory+nOptional));
     str("boardHeight", pIe.boardHeight, pCtx, !(--nMandatory+nOptional));
