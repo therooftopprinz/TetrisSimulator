@@ -38,6 +38,19 @@ struct PlayerContext
     traits::CheckerFn* checkerFn = nullptr;
     traits::ApplierFn applier = nullptr;
 
+    void reset()
+    {
+        bitmap.reset();
+        queue.clear();
+        current = {};
+        hold = {};
+        incoming = {};
+
+        transformer = {};
+        applier = nullptr;
+        checkerFn = nullptr;
+    }
+
     void initializeCurrentTermino(Termino pTerm)
     {
         current.emplace(pTerm);
@@ -193,6 +206,10 @@ private:
     void handle(GameStartNotification&& pMsg)
     {
         mGameStarted = true;
+        for (auto& i : mPlayers)
+        {
+            i.second.reset();
+        }
     }
 
     void handle(GameEndNotification&& pMsg)
@@ -223,6 +240,10 @@ private:
         {
             auto& player = foundIt->second;
 
+            if (pMsg.hold)
+            {
+                player.hold.emplace((Termino)*pMsg.hold);
+            }
             if (pMsg.attackIndicator)
             {
                 mCurrentTarget.emplace(player.id);
@@ -235,7 +256,7 @@ private:
             if (pMsg.placement)
             {
                 player.initializeCurrentTermino(Termino(*pMsg.placement));
-                if (player.queue.size())
+                if (player.queue.size() && !pMsg.hold)
                 {
                     player.queue.pop_front();
                 }
@@ -321,7 +342,7 @@ private:
 
     void drawBoard(uint8_t pX, uint8_t pY, PlayerContext& pPlayer)
     {
-        // PLAYER BOARD
+        uint8_t topBoard = pY + mConfig.boardHeight + 2;
         setCursor(pX, pY);
         for (unsigned i = 0; i<mConfig.boardWidth+2u; i++) putchar('#');
 
@@ -340,7 +361,7 @@ private:
             putchar('#');
         }
 
-        setCursor(pX, pY + mConfig.boardHeight + 3);
+        setCursor(pX, pY + topBoard + 3);
         print("id:%d name:\"%s\"", pPlayer.id, pPlayer.name.c_str());
 
         char hold= ' ';
@@ -353,29 +374,27 @@ private:
                 return map[(int)pTerm];
             };
 
+
         if (pPlayer.hold)
         {
             hold = toChar(*pPlayer.hold);
         }
-        if (pPlayer.current)
+        for (auto i = pPlayer.hold ? 1u : 0u; i<pPlayer.queue.size(); i++)
         {
-            hold = toChar(*pPlayer.current);
-        }
-        for (auto i : pPlayer.queue)
-        {
-            next.push_back(toChar(i));
+            next.push_back(toChar(pPlayer.queue[i]));
         }
         if (pPlayer.current)
         {
-            hold = toChar(*pPlayer.current);
+            current = toChar(*pPlayer.current);
         }
         if (pPlayer.incoming)
         {
             incoming = *pPlayer.incoming;
         } 
 
-        setCursor(pX, pY + mConfig.boardHeight + 2);
-        print("hold:%c current:%c", hold, current);
+        setCursor(pX, topBoard + 2);
+        print("current:%c hold:%c",  current, hold);
+        setCursor(pX, topBoard + 1);
         print("next:%s incoming:%d", next.c_str(), incoming);
 
         auto bitmap = pPlayer.bitmap;

@@ -37,6 +37,9 @@ void StandardTetrisBoard::reset()
     mPieceList.clear();
     mData.reset();
 
+    mCurrent = NONE;
+    mHasHoldCredit = true;
+
     nextPiece();
     mCallbacks.commit();
 }
@@ -162,6 +165,7 @@ void StandardTetrisBoard::onEvent(const board::Hold&)
     else
     {
         mHold.emplace(mCurrent);
+        mCallbacks.hold(mCurrent);
         nextPiece();
     }
     mCallbacks.commit();

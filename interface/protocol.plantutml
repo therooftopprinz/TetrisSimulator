@@ -18,18 +18,23 @@ note over player1
 end note
 
 player1 --> server : JoinRequest game:1
-player1 <-- server : JoinAccept player:1
+player1 <-- server : JoinAccept player:1 playerToAddList:[...]
+gm <-- server : PlayerUpdateNotification playerToAddList:[...]
 
 note over player2
   Player 2 joins
 end note
 
 player2 --> server : JoinRequest game:1
-player2 <-- server : JoinAccept player:2
+player2 <-- server : JoinAccept player:2 playerToAddList:[...]
+gm <-- server : PlayerUpdateNotification playerToAddList:[...]
+player1 <-- server : PlayerUpdateNotification playerToAddList:[...]
 
 == Game Start ==
 
-gm --> server : GameStartIndication dtr: 1
+gm --> server : GameStartIndication dtr: 1 playerToAddList:[...]
+player1 <-- server: GameStartNotification
+player2 <-- server: GameStartNotification
 
 note over server
   Initial pieces request
@@ -42,13 +47,13 @@ note over server
   Initial block
 end note
 
-gm <-- server : BoardUpdateNotification : player: 1
-player1 <-- server : BoardUpdateNotification : player: 1
-player2 <-- server : BoardUpdateNotification : player: 1
+gm <-- server : BoardUpdateNotification : player: 1 placement:...
+player1 <-- server : BoardUpdateNotification : player: 1 placement:...
+player2 <-- server : BoardUpdateNotification : player: 1 placement:...
 
-gm <-- server : BoardUpdateNotification : player: 2
-player2 <-- server : BoardUpdateNotification : player: 2
-player2 <-- server : BoardUpdateNotification : player: 2
+gm <-- server : BoardUpdateNotification : player: 2 placement:...
+player2 <-- server : BoardUpdateNotification : player: 2 placement:...
+player2 <-- server : BoardUpdateNotification : player: 2 placement:...
 
 == Player Moves ==
 
@@ -74,9 +79,9 @@ note over server
   Player 1 down tick expires
 end note
 
-gm <-- server : BoardUpdateNotification player:1
-player1 <-- server : BoardUpdateNotification player:1
-player2 <-- server : BoardUpdateNotification player:1
+gm <-- server : BoardUpdateNotification player: 1
+player1 <-- server : BoardUpdateNotification player: 1
+player2 <-- server : BoardUpdateNotification player: 1
 
 == Player Loses ==
 
@@ -84,11 +89,17 @@ note over server
   Player1 loses
 end note
 
-player1 <-- server : GameOverNotification
-
+gm <-- server : GameOverNotification player: 1
+player1 <-- server : GameOverNotification player: 1
+player2 <-- server : GameOverNotification player: 1
 
 == Game Ends ==
 
-player2 <-- server : GameOverNotification
+gm <-- server : GameOverNotification player: 2
+player1 <-- server : GameOverNotification player: 2
+player2 <-- server : GameOverNotification player: 2
 
+gm <-- server : GameEndNotification
+player1 <-- server : GameEndNotification
+player2 <-- server : GameEndNotification
 @enduml

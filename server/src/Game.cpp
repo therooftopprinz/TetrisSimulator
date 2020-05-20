@@ -140,13 +140,19 @@ void Game::handle(PieceResponse& pMsg)
         return;
     }
 
+    mTerminoRequested = false;
+
     for (auto i : pMsg.pieceToAddList)
     {
         mTerminoCache.emplace_back((Termino)i);
     }
     for (auto& i : mPlayers)
     {
-        i.second.board->onEvent(board::TerminoAvailable{});
+        auto& player = i.second;
+        if (PlayerMode::PLAYER == player.playerMode)
+        {
+            player.board->onEvent(board::TerminoAvailable{});
+        }
     }
 }
 
@@ -208,10 +214,16 @@ Termino Game::onBcbGenerate(PlayerContext& pPlayer)
     auto& index = pPlayer.currentPieceIndex;
     if (index >= mTerminoCache.size())
     {
+        if (mTerminoRequested)
+        {
+            return NONE;
+        }
+        mTerminoRequested = true;
+
         TetrisProtocol message;
         message = PieceRequest{};
         auto& pieceRequest = std::get<PieceRequest>(message);
-        pieceRequest.count = 100;
+        pieceRequest.count = 20;
 
         send(message);
         return NONE;
@@ -376,6 +388,7 @@ void Game::onBcbGameover(PlayerContext& pPlayer)
 void Game::onBcbIncomingAttack(PlayerContext& pPlayer, uint8_t pLines)
 {
     auto& boardUpdates = pPlayer.boardUpdates;
+    pPlayer.boardUpdatesCount++;
     boardUpdates.attackIndicator.emplace(pLines);
 }
 

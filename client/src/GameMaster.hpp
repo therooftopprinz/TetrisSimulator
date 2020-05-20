@@ -55,6 +55,12 @@ public:
     {
     }
 
+    void onMsg(GameEndNotification&& pMsg)
+    {
+        mStarted = false;
+        mClient.consoleLog("[GameMaster]: game ended!");
+    }
+
     bool start()
     {
         if (mStarted)

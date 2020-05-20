@@ -104,6 +104,7 @@ private:
     std::unique_lock<std::mutex> mRunningWokerLock = std::unique_lock<std::mutex>(mRunningWokerMutex);
 
     std::vector<Termino> mTerminoCache;
+    bool mTerminoRequested = false;
 
     TetrisBoardConfig mBoardConfig;
     CreateGameRequest mConfig;
