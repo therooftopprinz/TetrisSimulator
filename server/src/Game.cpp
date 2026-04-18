@@ -10,108 +10,79 @@ Game::Game(CreateGameRequest&& pConfig, std::weak_ptr<IConnectionSession> pGmSes
     : mBoardConfig{pConfig.boardWidth, pConfig.boardHeight}
     , mConfig(std::move(pConfig))
     , mGmSession(pGmSession)
-    , mAttacker(std::make_unique<CommonAttacker>(*this, mConfig, mPlayers, pSimulator))
+    , mAttacker(std::make_unique<CommonAttacker>(mConfig, mPlayers, pSimulator))
     , mSimulator(pSimulator)
 {
-    mRunningWokerLock.unlock();
 }
 
 void Game::join(JoinRequest& pMsg, std::weak_ptr<IConnectionSession> pPlayerSession)
 {
-    std::function<void()> doAdd = [this, pMsg, pPlayerSession]() {
-            uint8_t id = mPlayersIdCtr++;
+    uint8_t id = mPlayersIdCtr++;
 
-            auto res = mPlayers.emplace(std::piecewise_construct, std::forward_as_tuple(id), std::forward_as_tuple(id, mBoardConfig, pPlayerSession));
-            auto& player = res.first->second;
-            if (auto sp = pPlayerSession.lock())
-            {
-                const std::string& dn = sp->clientDisplayName();
-                if (!dn.empty())
-                {
-                    player.name = dn;
-                }
-            }
-            auto& playerCallbacks = player.callbacks;
-            playerCallbacks.generate = [&player, this]() -> Termino {return onBcbGenerate(player);};
-            playerCallbacks.insert = [&player, this](std::vector<Line> pLines) {return onBcbInsert(player, std::move(pLines));};
-            playerCallbacks.replace = [&player, this](std::vector<Line> pLines) {return onBcbReplace(player, std::move(pLines));};
-            playerCallbacks.clear = [&player, this](std::vector<uint8_t> pLines) {return onBcbClear(player, std::move(pLines));};
-            playerCallbacks.piecePosition = [&player, this](CellCoord pCoord) {return onBcbPiecePosition(player, pCoord);};
-            playerCallbacks.placePiece = [&player, this](Termino pTermino) {return onBcbPlacePiece(player, pTermino);};
-            playerCallbacks.rotate = [&player, this](uint8_t pRot) {return onBcbRotate(player, pRot);};
-            playerCallbacks.piecesAdded = [&player, this](std::vector<Termino> pTerminos) {return onBcbPiecesAdded(player, std::move(pTerminos));};
-            playerCallbacks.hold = [&player, this](Termino pTermino) {return onBcbHold(player, pTermino);};
-            playerCallbacks.commit = [&player, this]() {return onBcbCommit(player);};
-            playerCallbacks.gameOver = [&player, this]() {return onBcbGameover(player);};
-            playerCallbacks.incomingAttack = [&player, this](uint8_t pLines) {return onBcbIncomingAttack(player, pLines);};
+    auto res = mPlayers.emplace(std::piecewise_construct, std::forward_as_tuple(id), std::forward_as_tuple(id, mBoardConfig, pPlayerSession));
+    auto& player = res.first->second;
+    if (auto sp = pPlayerSession.lock())
+    {
+        const std::string& dn = sp->clientDisplayName();
+        if (!dn.empty())
+        {
+            player.name = dn;
+        }
+    }
 
-            TetrisProtocol message = JoinAccept{};
-            auto& joinAccept = std::get<JoinAccept>(message);
+    auto& playerCallbacks = player.callbacks;
+    playerCallbacks.generate = [&player, this]() -> Termino {return onBcbGenerate(player);};
+    playerCallbacks.insert = [&player, this](std::vector<Line> pLines) {return onBcbInsert(player, std::move(pLines));};
+    playerCallbacks.replace = [&player, this](std::vector<Line> pLines) {return onBcbReplace(player, std::move(pLines));};
+    playerCallbacks.clear = [&player, this](std::vector<uint8_t> pLines) {return onBcbClear(player, std::move(pLines));};
+    playerCallbacks.piecePosition = [&player, this](CellCoord pCoord) {return onBcbPiecePosition(player, pCoord);};
+    playerCallbacks.placePiece = [&player, this](Termino pTermino) {return onBcbPlacePiece(player, pTermino);};
+    playerCallbacks.rotate = [&player, this](uint8_t pRot) {return onBcbRotate(player, pRot);};
+    playerCallbacks.piecesAdded = [&player, this](std::vector<Termino> pTerminos) {return onBcbPiecesAdded(player, std::move(pTerminos));};
+    playerCallbacks.hold = [&player, this](Termino pTermino) {return onBcbHold(player, pTermino);};
+    playerCallbacks.commit = [&player, this]() {return onBcbCommit(player);};
+    playerCallbacks.gameOver = [&player, this]() {return onBcbGameover(player);};
+    playerCallbacks.incomingAttack = [&player, this](uint8_t pLines) {return onBcbIncomingAttack(player, pLines);};
 
-            joinAccept.player = id;
-            joinAccept.boardHeight = mBoardConfig.height;
-            joinAccept.boardWidth = mBoardConfig.width;
+    TetrisProtocol message = JoinAccept{};
+    auto& joinAccept = std::get<JoinAccept>(message);
 
-            for (auto& i : mPlayers)
-            {
-                auto& player = i.second;
-                joinAccept.playerToAddList.emplace_back(PlayerInfo{player.id, player.name, player.playerMode});
-            }
+    joinAccept.player = id;
+    joinAccept.boardHeight = mBoardConfig.height;
+    joinAccept.boardWidth = mBoardConfig.width;
 
-            send(player, message);
+    for (auto& i : mPlayers)
+    {
+        auto& player = i.second;
+        joinAccept.playerToAddList.emplace_back(PlayerInfo{player.id, player.name, player.playerMode});
+    }
 
-            message = PlayerUpdateNotification{};
-            auto& playerUpdateNotification = std::get<PlayerUpdateNotification>(message);
+    send(player, message);
 
-            playerUpdateNotification.playeToAddList.emplace_back(PlayerInfo{player.id, player.name, player.playerMode});
+    message = PlayerUpdateNotification{};
+    auto& playerUpdateNotification = std::get<PlayerUpdateNotification>(message);
 
-            send(message);
+    playerUpdateNotification.playeToAddList.emplace_back(PlayerInfo{player.id, player.name, player.playerMode});
 
-            for (auto& i : mPlayers)
-            {
-                auto& playerX = i.second;
-                if (&playerX != &player)
-                {
-                    send(playerX, message);
-                }
-            }
+    send(message);
 
-            if (mGameStarted)
-            {
-                beginPlaying(player);
-                if (mPlayingCount > 1)
-                {
-                    mAttacker->start();
-                }
-            }
-        };
+    for (auto& i : mPlayers)
+    {
+        auto& playerX = i.second;
+        if (&playerX != &player)
+        {
+            send(playerX, message);
+        }
+    }
 
-    trigger(std::move(doAdd));
-}
-
-void Game::trigger(bfc::light_function<void()> pFn)
-{
-    onMsg(std::move(pFn));
-}
-
-void Game::trigger(std::function<void()> pFn)
-{
-    onMsg(std::move(pFn));
-}
-
-void Game::runEvent(GameEvent& pEvent)
-{
-    std::visit([this](auto& pEvent){handle(pEvent);}, pEvent);
-}
-
-void Game::handle(bfc::light_function<void()>& pFn)
-{
-    pFn();
-}
-
-void Game::handle(std::function<void()>& pFn)
-{
-    pFn();
+    if (mGameStarted)
+    {
+        beginPlaying(player);
+        if (mPlayingCount > 1)
+        {
+            mAttacker->start();
+        }
+    }
 }
 
 void Game::handle(TetrisProtocol& pMsg)
@@ -134,6 +105,21 @@ void Game::handle(GameStartIndication& pMsg)
     for (auto& i : mPlayers)
     {
         beginPlaying(i.second);
+    }
+
+    // No active players (GM alone, or only spectators): end immediately so clients get GameEndNotification
+    // and can /leave then /create for a new round.
+    if (0 == mPlayingCount)
+    {
+        mGameStarted = false;
+        TetrisProtocol message = GameEndNotification{};
+        send(message);
+        for (auto& i : mPlayers)
+        {
+            send(i.second, message);
+        }
+        mAttacker->stop();
+        return;
     }
 
     if (1 == mPlayingCount)
@@ -160,12 +146,11 @@ void Game::beginPlaying(PlayerContext& pPlayer)
 
 void Game::handle(PieceResponse& pMsg)
 {
+    mTerminoRequested = false;
     if (!mGameStarted)
     {
         return;
     }
-
-    mTerminoRequested = false;
 
     for (auto i : pMsg.pieceToAddList)
     {
@@ -419,11 +404,7 @@ void Game::onConnectionLost(std::shared_ptr<IConnectionSession> session)
     {
         return;
     }
-    trigger(std::function<void()>([this, session]() { handleConnectionLostNow(session); }));
-}
 
-void Game::handleConnectionLostNow(const std::shared_ptr<IConnectionSession>& session)
-{
     if (auto gm = mGmSession.lock())
     {
         if (gm.get() == session.get())
@@ -450,11 +431,7 @@ void Game::onVoluntaryLeave(std::shared_ptr<IConnectionSession> session)
     {
         return;
     }
-    trigger(std::function<void()>([this, session]() { handleVoluntaryLeaveNow(session); }));
-}
 
-void Game::handleVoluntaryLeaveNow(const std::shared_ptr<IConnectionSession>& session)
-{
     if (auto gm = mGmSession.lock())
     {
         if (gm.get() == session.get())
@@ -469,7 +446,7 @@ void Game::handleVoluntaryLeaveNow(const std::shared_ptr<IConnectionSession>& se
         auto ps = it->second.connectionSession.lock();
         if (ps && ps.get() == session.get())
         {
-            removePlayerAt(it, DeleteReason::LEFT);
+            removePlayerAt(it, DeleteReason::VOLUNTARY);
             return;
         }
     }
@@ -578,8 +555,7 @@ void Game::startPlayerTimer(PlayerContext& pPlayer)
     mSimulator.cancelGameTimer(timerId);
     auto timediff = std::chrono::nanoseconds(mConfig.lockingTimeoutMs)*1000*1000;
     timerId = mSimulator.scheduleGameTimer(timediff, [this, &pPlayer] {
-            bfc::light_function<void()> fn = [this, &pPlayer]() -> void {onLockingTimeout(pPlayer);};
-            trigger(std::move(fn));
+            onLockingTimeout(pPlayer);
         });
 }
 

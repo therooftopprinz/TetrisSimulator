@@ -363,7 +363,8 @@ bool NcursesUi::init()
     {
         return false;
     }
-    ::cbreak();
+    // raw() (not cbreak()) so Ctrl+C is delivered as byte 3 instead of raising SIGINT.
+    ::raw();
     ::noecho();
     ::nonl();
     ::intrflush(stdscr, FALSE);
@@ -410,7 +411,7 @@ void NcursesUi::appendLog(std::string line)
     }
 }
 
-void NcursesUi::syncInputLine(const std::string& clientName, const char* inputBuf, std::size_t inputLen, bool chatCompose)
+void NcursesUi::syncInputLine(const char* inputBuf, std::size_t inputLen, bool chatCompose)
 {
     if (!mInitialized || termLines() < 1)
     {
@@ -420,23 +421,8 @@ void NcursesUi::syncInputLine(const std::string& clientName, const char* inputBu
     const int w = termCols() > 0 ? termCols() : 80;
     const int maxCols = std::max(1, w - 1);
     const std::string prefix = chatCompose ? "*chat: " : "chat: ";
-    const std::string sep = " : ";
 
-    std::string name = clientName;
-    const int minInputCols = std::min(24, std::max(8, maxCols / 3));
-    int budget = maxCols - minInputCols - static_cast<int>(prefix.size() + sep.size());
-    if (budget < 4)
-    {
-        budget = std::max(1, maxCols / 4);
-    }
-    if (static_cast<int>(name.size()) > budget)
-    {
-        const std::size_t keep = static_cast<std::size_t>(std::max(1, budget - 3));
-        name.assign(name.data(), std::min(name.size(), keep));
-        name += "...";
-    }
-
-    std::string prompt = prefix + name + sep;
+    std::string prompt = prefix;
     const std::size_t room = static_cast<std::size_t>(
         std::max(0, maxCols - static_cast<int>(prompt.size())));
     std::size_t take = std::min(inputLen, room);
@@ -621,7 +607,6 @@ void NcursesUi::fullRedraw(TetrisClient& client)
     const bool gameplayHideTyped =
         playing && !client.gameplayChatCompose();
     syncInputLine(
-        client.mClientName,
         gameplayHideTyped ? "" : client.mConsoleInputBuffer,
         gameplayHideTyped ? 0 : client.mConsoleInputBufferIdx,
         client.gameplayChatCompose());

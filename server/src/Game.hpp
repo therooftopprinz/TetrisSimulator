@@ -5,16 +5,18 @@
 #include <functional>
 #include <memory>
 #include <stdexcept>
+#include <string>
 #include <unordered_map>
 #include <variant>
+#include <deque>
 
 #include <sys/socket.h>
 #include <netinet/in.h> 
 
-#include <bfc/thread_pool.hpp>
 #include <bfc/function.hpp>
 
-#include <interface/protocol.hpp>
+#include <interface/protocol_export.hpp>
+#include <tetris_log.hpp>
 
 #include <common/StandardTetrisBoard.hpp>
 
@@ -26,9 +28,7 @@
 namespace tetris
 {
 
-using GameEvent = std::variant<TetrisProtocol, bfc::light_function<void()>, std::function<void()>>;
-
-class Game : public IExecutor
+class Game
 {
 public:
     Game(CreateGameRequest&& pConfig, std::weak_ptr<IConnectionSession> pGmSession, ITetrisSimulator& pSimulator);
@@ -48,41 +48,20 @@ public:
     template <typename T>
     void onMsg(T&& pMsg)
     {
-        std::unique_lock<std::mutex> lg(mGameEventsMutex);
-        mGameEvents.emplace_back(std::forward<T>(pMsg));
-        lg.unlock();
-
-        if (!mRunningWokerLock.owns_lock() && mRunningWokerLock.try_lock())
-        {
-            while (true)
-            {
-                lg.lock();
-                if (!mGameEvents.size())
-                {
-                    lg.unlock();
-                    break;
-                }
-                auto event = std::move(mGameEvents.front());
-                mGameEvents.pop_front();
-                lg.unlock();
-                runEvent(event);
-            }
-            mRunningWokerLock.unlock();
-        }
+        handle(pMsg);
     }
 
 private:
 
-    void trigger(bfc::light_function<void()> pFn);
-    void trigger(std::function<void()> pFn);
-    void runEvent(GameEvent& pEvent);
-
     template<typename T>
-    void handle(T&)
-    {}
+    void handle(T& pMsg)
+    {
+        std::string stred;
+        str("msg", pMsg, stred, true);
+        logless::log(tetris_logger(), logless::WARNING, logless::LOGALL,
+            "Game[gameId=%u;]: unhandled message: %s;", mGameId, stred.c_str());
+    }
 
-    void handle(bfc::light_function<void()>& pFn);
-    void handle(std::function<void()>& pFn);
     void handle(TetrisProtocol& pMsg);
     void handle(GameStartIndication& pMsg);
     void handle(PieceResponse& pMsg);
@@ -104,8 +83,6 @@ private:
     void concludeMatchIfOneOrNoPlayersLeft();
     void shutdownDueToGmDisconnect();
     void removePlayerAt(std::unordered_map<uint8_t, PlayerContext>::iterator it, DeleteReason reason);
-    void handleConnectionLostNow(const std::shared_ptr<IConnectionSession>& session);
-    void handleVoluntaryLeaveNow(const std::shared_ptr<IConnectionSession>& session);
 
     void beginPlaying(PlayerContext& pPlayer);
     void startPlayerTimer(PlayerContext& pPlayer);
@@ -113,11 +90,6 @@ private:
 
     void send(TetrisProtocol& pMessage);
     void send(PlayerContext& pPlayer, TetrisProtocol& pMessage);
-
-    std::deque<GameEvent> mGameEvents;
-    std::mutex mGameEventsMutex;
-    std::mutex mRunningWokerMutex;
-    std::unique_lock<std::mutex> mRunningWokerLock = std::unique_lock<std::mutex>(mRunningWokerMutex);
 
     std::vector<Termino> mTerminoCache;
     bool mTerminoRequested = false;
@@ -135,9 +107,6 @@ private:
     uint8_t mPlayersIdCtr = 0;
 
     std::unique_ptr<IAttacker> mAttacker;
-
-    std::unordered_map<int, bfc::light_function<void()>> mTriggers;
-    int mTriggersId = 0;
 
     ITetrisSimulator& mSimulator;
 };

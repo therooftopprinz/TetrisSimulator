@@ -1,20 +1,12 @@
-// Type:  ('u8', {'type': 'unsigned'})
-// Type:  ('u8', {'width': '8'})
-// Type:  ('i8', {'type': 'signed'})
-// Type:  ('i8', {'width': '8'})
 // Type:  ('u8Optional', {'type': 'u8'})
 // Type:  ('u8Optional', {'optional': ''})
 // Type:  ('u8array', {'type': 'u8'})
 // Type:  ('u8array', {'dynamic_array': '256'})
 // Type:  ('u8arrayLarge', {'type': 'u8'})
 // Type:  ('u8arrayLarge', {'dynamic_array': ''})
-// Type:  ('u16', {'type': 'unsigned'})
-// Type:  ('u16', {'width': '16'})
 // Type:  ('u16Array', {'type': 'u16'})
 // Type:  ('u16Array', {'dynamic_array': '256'})
-// Type:  ('u64', {'type': 'unsigned'})
-// Type:  ('u64', {'width': '64'})
-// Type:  ('String', {'type': 'asciiz'})
+// Type:  ('String', {'type': 'string'})
 // Enumeration:  ('Action', ('LEFT', None))
 // Enumeration:  ('Action', ('RIGHT', None))
 // Enumeration:  ('Action', ('SOFT_DROP', None))
@@ -34,7 +26,7 @@
 // Enumeration:  ('CodeType', ('TINY_BIN', None))
 // Enumeration:  ('DeleteReason', ('DISCONNECTED', None))
 // Enumeration:  ('DeleteReason', ('KICKED', None))
-// Enumeration:  ('DeleteReason', ('LEFT', None))
+// Enumeration:  ('DeleteReason', ('VOLUNTARY', None))
 // Enumeration:  ('PlayerMode', ('SPECTATOR', None))
 // Enumeration:  ('PlayerMode', ('PLAYER', None))
 // Enumeration:  ('AttackModeEnum', ('SEQUENTIAL', None))
@@ -49,6 +41,10 @@
 // Enumeration:  ('BoardType', ('SRS', None))
 // Enumeration:  ('BoardType', ('ARS', None))
 // Enumeration:  ('BoardType', ('CULTRIS', None))
+// Enumeration:  ('LoginResult', ('OK', None))
+// Enumeration:  ('LoginResult', ('ALREADY_EXIST', None))
+// Sequence:  LoginRequest ('String', 'username')
+// Sequence:  LoginResponse ('LoginResult', 'result')
 // Sequence:  PlayerInfo ('u8', 'id')
 // Sequence:  PlayerInfo ('String', 'name')
 // Sequence:  PlayerInfo ('PlayerMode', 'mode')
@@ -94,8 +90,8 @@
 // Sequence:  Line ('u16', 'diff')
 // Type:  ('LineList', {'type': 'Line'})
 // Type:  ('LineList', {'dynamic_array': '256'})
-// Sequence:  PiecePosition ('i8', 'x')
-// Sequence:  PiecePosition ('i8', 'y')
+// Sequence:  PiecePosition ('s8', 'x')
+// Sequence:  PiecePosition ('s8', 'y')
 // Type:  ('PiecePositionOptional', {'type': 'PiecePosition'})
 // Type:  ('PiecePositionOptional', {'optional': ''})
 // Type:  ('PieceOptional', {'type': 'Piece'})
@@ -123,7 +119,7 @@
 // Sequence:  PlayerActionIndication ('u8', 'player')
 // Sequence:  PlayerActionIndication ('u8', 'count')
 // Sequence:  PlayerActionIndication ('Action', 'action')
-// Sequence:  ClientChat ('String', 'name')
+// Sequence:  ClientChat ('String', 'username')
 // Sequence:  ClientChat ('String', 'message')
 // Sequence:  LeaveIndication ('u64', 'gameId')
 // Choice:  ('TetrisProtocol', 'CreateGameRequest')
@@ -146,11 +142,15 @@
 // Choice:  ('TetrisProtocol', 'PlayerActionIndication')
 // Choice:  ('TetrisProtocol', 'ClientChat')
 // Choice:  ('TetrisProtocol', 'LeaveIndication')
+// Choice:  ('TetrisProtocol', 'LoginRequest')
+// Choice:  ('TetrisProtocol', 'LoginResponse')
 // Generating for C++
 #ifndef __CUM_MSG_HPP__
 #define __CUM_MSG_HPP__
 #include "cum/cum.hpp"
-#include <optional>
+
+namespace cum
+{
 
 /***********************************************
 /
@@ -158,16 +158,12 @@
 /
 ************************************************/
 
-using u8 = uint8_t;
-using i8 = int8_t;
 using u8Optional = std::optional<u8>;
 using u8array = cum::vector<u8, 256>;
 using u8arrayLarge = cum::vector<u8, 4294967296>;
-using u16 = uint16_t;
 using u16Array = cum::vector<u16, 256>;
-using u64 = uint64_t;
-using String = std::string;
-enum class Action : uint8_t
+using String = string;
+enum Action
 {
     LEFT,
     RIGHT,
@@ -179,7 +175,7 @@ enum class Action : uint8_t
     ROT_180
 };
 
-enum class Piece : uint8_t
+enum Piece
 {
     I,
     L,
@@ -190,26 +186,26 @@ enum class Piece : uint8_t
     T
 };
 
-enum class CodeType : uint8_t
+enum CodeType
 {
     TINY_ASM,
     TINY_BIN
 };
 
-enum class DeleteReason : uint8_t
+enum DeleteReason
 {
     DISCONNECTED,
     KICKED,
-    LEFT
+    VOLUNTARY
 };
 
-enum class PlayerMode : uint8_t
+enum PlayerMode
 {
     SPECTATOR,
     PLAYER
 };
 
-enum class AttackModeEnum : uint8_t
+enum AttackModeEnum
 {
     SEQUENTIAL,
     DIVIDE,
@@ -219,18 +215,34 @@ enum class AttackModeEnum : uint8_t
     ROULETTE
 };
 
-enum class CounteringType : uint8_t
+enum CounteringType
 {
     FULL,
     LIMITED,
     INSTANT
 };
 
-enum class BoardType : uint8_t
+enum BoardType
 {
     SRS,
     ARS,
     CULTRIS
+};
+
+enum LoginResult
+{
+    OK,
+    ALREADY_EXIST
+};
+
+struct LoginRequest
+{
+    String username;
+};
+
+struct LoginResponse
+{
+    LoginResult result;
 };
 
 struct PlayerInfo
@@ -342,8 +354,8 @@ struct Line
 using LineList = cum::vector<Line, 256>;
 struct PiecePosition
 {
-    i8 x;
-    i8 y;
+    s8 x;
+    s8 y;
 };
 
 using PiecePositionOptional = std::optional<PiecePosition>;
@@ -401,7 +413,7 @@ struct PlayerActionIndication
 
 struct ClientChat
 {
-    String name;
+    String username;
     String message;
 };
 
@@ -410,7 +422,7 @@ struct LeaveIndication
     u64 gameId;
 };
 
-using TetrisProtocol = std::variant<CreateGameRequest,CreateGameAccept,CreateGameReject,GameStartIndication,PieceRequest,PieceResponse,AttackLinesRequest,AttackLinesResponse,AttackIndication,GameStartNotification,PlayerUpdateNotification,BoardUpdateNotification,GameOverNotification,GameEndNotification,JoinRequest,JoinAccept,JoinReject,PlayerActionIndication,ClientChat,LeaveIndication>;
+using TetrisProtocol = std::variant<CreateGameRequest,CreateGameAccept,CreateGameReject,GameStartIndication,PieceRequest,PieceResponse,AttackLinesRequest,AttackLinesResponse,AttackIndication,GameStartNotification,PlayerUpdateNotification,BoardUpdateNotification,GameOverNotification,GameEndNotification,JoinRequest,JoinAccept,JoinReject,PlayerActionIndication,ClientChat,LeaveIndication,LoginRequest,LoginResponse>;
 /***********************************************
 /
 /            Codec Definitions
@@ -485,7 +497,7 @@ inline void str(const char* pName, const DeleteReason& pIe, std::string& pCtx, b
     }
     if (DeleteReason::DISCONNECTED == pIe) pCtx += "\"DISCONNECTED\"";
     if (DeleteReason::KICKED == pIe) pCtx += "\"KICKED\"";
-    if (DeleteReason::LEFT == pIe) pCtx += "\"LEFT\"";
+    if (DeleteReason::VOLUNTARY == pIe) pCtx += "\"VOLUNTARY\"";
     pCtx = pCtx + "}";
     if (!pIsLast)
     {
@@ -556,6 +568,88 @@ inline void str(const char* pName, const BoardType& pIe, std::string& pCtx, bool
     if (BoardType::SRS == pIe) pCtx += "\"SRS\"";
     if (BoardType::ARS == pIe) pCtx += "\"ARS\"";
     if (BoardType::CULTRIS == pIe) pCtx += "\"CULTRIS\"";
+    pCtx = pCtx + "}";
+    if (!pIsLast)
+    {
+        pCtx += ",";
+    }
+}
+
+inline void str(const char* pName, const LoginResult& pIe, std::string& pCtx, bool pIsLast)
+{
+    using namespace cum;
+    if (pName)
+    {
+        pCtx = pCtx + "\"" + pName + "\":";
+    }
+    if (LoginResult::OK == pIe) pCtx += "\"OK\"";
+    if (LoginResult::ALREADY_EXIST == pIe) pCtx += "\"ALREADY_EXIST\"";
+    pCtx = pCtx + "}";
+    if (!pIsLast)
+    {
+        pCtx += ",";
+    }
+}
+
+inline void encode_per(const LoginRequest& pIe, cum::per_codec_ctx& pCtx)
+{
+    using namespace cum;
+    encode_per(pIe.username, pCtx);
+}
+
+inline void decode_per(LoginRequest& pIe, cum::per_codec_ctx& pCtx)
+{
+    using namespace cum;
+    decode_per(pIe.username, pCtx);
+}
+
+inline void str(const char* pName, const LoginRequest& pIe, std::string& pCtx, bool pIsLast)
+{
+    using namespace cum;
+    if (!pName)
+    {
+        pCtx = pCtx + "{";
+    }
+    else
+    {
+        pCtx = pCtx + "\"" + pName + "\":{";
+    }
+    size_t nOptional = 0;
+    size_t nMandatory = 1;
+    str("username", pIe.username, pCtx, !(--nMandatory+nOptional));
+    pCtx = pCtx + "}";
+    if (!pIsLast)
+    {
+        pCtx += ",";
+    }
+}
+
+inline void encode_per(const LoginResponse& pIe, cum::per_codec_ctx& pCtx)
+{
+    using namespace cum;
+    encode_per(pIe.result, pCtx);
+}
+
+inline void decode_per(LoginResponse& pIe, cum::per_codec_ctx& pCtx)
+{
+    using namespace cum;
+    decode_per(pIe.result, pCtx);
+}
+
+inline void str(const char* pName, const LoginResponse& pIe, std::string& pCtx, bool pIsLast)
+{
+    using namespace cum;
+    if (!pName)
+    {
+        pCtx = pCtx + "{";
+    }
+    else
+    {
+        pCtx = pCtx + "\"" + pName + "\":{";
+    }
+    size_t nOptional = 0;
+    size_t nMandatory = 1;
+    str("result", pIe.result, pCtx, !(--nMandatory+nOptional));
     pCtx = pCtx + "}";
     if (!pIsLast)
     {
@@ -1690,14 +1784,14 @@ inline void str(const char* pName, const PlayerActionIndication& pIe, std::strin
 inline void encode_per(const ClientChat& pIe, cum::per_codec_ctx& pCtx)
 {
     using namespace cum;
-    encode_per(pIe.name, pCtx);
+    encode_per(pIe.username, pCtx);
     encode_per(pIe.message, pCtx);
 }
 
 inline void decode_per(ClientChat& pIe, cum::per_codec_ctx& pCtx)
 {
     using namespace cum;
-    decode_per(pIe.name, pCtx);
+    decode_per(pIe.username, pCtx);
     decode_per(pIe.message, pCtx);
 }
 
@@ -1714,7 +1808,7 @@ inline void str(const char* pName, const ClientChat& pIe, std::string& pCtx, boo
     }
     size_t nOptional = 0;
     size_t nMandatory = 2;
-    str("name", pIe.name, pCtx, !(--nMandatory+nOptional));
+    str("username", pIe.username, pCtx, !(--nMandatory+nOptional));
     str("message", pIe.message, pCtx, !(--nMandatory+nOptional));
     pCtx = pCtx + "}";
     if (!pIsLast)
@@ -1842,6 +1936,14 @@ inline void encode_per(const TetrisProtocol& pIe, cum::per_codec_ctx& pCtx)
     {
         encode_per(std::get<19>(pIe), pCtx);
     }
+    else if (20 == type)
+    {
+        encode_per(std::get<20>(pIe), pCtx);
+    }
+    else if (21 == type)
+    {
+        encode_per(std::get<21>(pIe), pCtx);
+    }
 }
 
 inline void decode_per(TetrisProtocol& pIe, cum::per_codec_ctx& pCtx)
@@ -1949,6 +2051,16 @@ inline void decode_per(TetrisProtocol& pIe, cum::per_codec_ctx& pCtx)
     {
         pIe = LeaveIndication();
         decode_per(std::get<19>(pIe), pCtx);
+    }
+    else if (20 == type)
+    {
+        pIe = LoginRequest();
+        decode_per(std::get<20>(pIe), pCtx);
+    }
+    else if (21 == type)
+    {
+        pIe = LoginResponse();
+        decode_per(std::get<21>(pIe), pCtx);
     }
 }
 
@@ -2157,10 +2269,31 @@ inline void str(const char* pName, const TetrisProtocol& pIe, std::string& pCtx,
         str(name.c_str(), std::get<19>(pIe), pCtx, true);
         pCtx += "}";
     }
+    else if (20 == type)
+    {
+        if (pName)
+            pCtx += std::string(pName) + ":{";
+        else
+            pCtx += "{";
+        std::string name = "LoginRequest";
+        str(name.c_str(), std::get<20>(pIe), pCtx, true);
+        pCtx += "}";
+    }
+    else if (21 == type)
+    {
+        if (pName)
+            pCtx += std::string(pName) + ":{";
+        else
+            pCtx += "{";
+        std::string name = "LoginResponse";
+        str(name.c_str(), std::get<21>(pIe), pCtx, true);
+        pCtx += "}";
+    }
     if (!pIsLast)
     {
         pCtx += ",";
     }
 }
 
+} // namespace cum
 #endif //__CUM_MSG_HPP__

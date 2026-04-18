@@ -1,14 +1,14 @@
 #include <ConnectionSession.hpp>
 #include <tetris_log.hpp>
 
+#include <cerrno>
+
 namespace tetris
 {
 
 ConnectionSession::ConnectionSession(int pFd, ITetrisSimulator& pTetrisSim)
     : mFd(pFd)
     , mTetrisSim(pTetrisSim)
-    , mTp(tetris::singleton<bfc::thread_pool<>>::get())
-    , mMp(tetris::singleton<bfc::log2_memory_pool<>>::get())
 {
 }
 
@@ -44,17 +44,13 @@ const std::string& ConnectionSession::clientDisplayName() const
 
 void ConnectionSession::onMsg(ClientChat& pMsg, TetrisProtocol&)
 {
-    if (!pMsg.name.empty())
-    {
-        mClientDisplayName = pMsg.name;
-    }
     if (!pMsg.message.empty())
     {
         mTetrisSim.broadcastClientChat(pMsg, mFd);
     }
 }
 
-void ConnectionSession::onMsg(LeaveIndication&& pMsg, TetrisProtocol&)
+void ConnectionSession::onMsg(LeaveIndication& pMsg, TetrisProtocol&)
 {
     if (!mGame)
     {
@@ -72,18 +68,26 @@ void ConnectionSession::handleRead()
     int readSize = 0;
     if (WAIT_HEADER == mReadState)
     {
-        readSize = 2;
+        readSize = 2 - static_cast<int>(mBuffIdx);
     }
     else
     {
-        readSize = mExpectedReadSize - mBuffIdx;
+        readSize = mExpectedReadSize - static_cast<int>(mBuffIdx);
     }
 
     auto res = read(mFd, mBuff+mBuffIdx, readSize);
 
     if (-1 == res)
     {
-        throw std::runtime_error(strerror(errno));
+        const int err = errno;
+        if (err == EINTR)
+        {
+            return;
+        }
+        logless::log(tetris_logger(), logless::WARNING, logless::LOGALL,
+            "ConnectionSession[fd=%d;]: read failed: errno=%d; %s;", mFd, err, strerror(err));
+        mTetrisSim.onDisconnect(mFd);
+        return;
     }
     if (0 == res)
     {
@@ -91,33 +95,60 @@ void ConnectionSession::handleRead()
         return;
     }
 
-    mBuffIdx += res;
+    mBuffIdx += static_cast<uint16_t>(res);
 
     if (WAIT_HEADER == mReadState)
     {
+        if (mBuffIdx < 2)
+        {
+            return;
+        }
         std::memcpy(&mExpectedReadSize, mBuff, 2);
         mBuffIdx = 0;
+        if (mExpectedReadSize <= 0 || mExpectedReadSize > static_cast<int>(sizeof(mBuff)))
+        {
+            mTetrisSim.onDisconnect(mFd);
+            return;
+        }
         mReadState = WAIT_REMAINING;
         return;
     }
 
-    if (mExpectedReadSize == mBuffIdx)
+    if (mExpectedReadSize == static_cast<int>(mBuffIdx))
     {
-        // auto raw = mMp.allocate0(mBuffIdx);
-        auto raw = new std::byte[mBuffIdx];
-        std::memcpy(raw, mBuff, mBuffIdx);
-        mTp.execute([this, raw, size = mBuffIdx]() mutable {
-                decodeMessage(raw, size);
-            });
+        decodeMessage(mBuff, mBuffIdx);
         mReadState = WAIT_HEADER;
         mBuffIdx = 0;
     }
 }
 
-void ConnectionSession::decodeMessage(std::byte* pRaw, size_t pSize)
+void ConnectionSession::handleLogin(LoginRequest&& pMsg)
+{
+    if (pMsg.username.empty())
+    {
+        mTetrisSim.onDisconnect(mFd);
+        return;
+    }
+    mClientDisplayName = pMsg.username;
+    if (!mTetrisSim.claimUsername(shared_from_this(), pMsg.username))
+    {
+        mClientDisplayName.clear();
+        TetrisProtocol response = LoginResponse{};
+        std::get<LoginResponse>(response).result = LoginResult::ALREADY_EXIST;
+        send(response);
+        mTetrisSim.onDisconnect(mFd);
+        return;
+    }
+    mLoggedIn = true;
+    TetrisProtocol response = LoginResponse{};
+    std::get<LoginResponse>(response).result = LoginResult::OK;
+    send(response);
+}
+
+void ConnectionSession::decodeMessage(const std::byte* pRaw, size_t pSize)
 {
     TetrisProtocol message;
-    cum::per_codec_ctx context(pRaw, pSize);
+    cum::per_codec_ctx context(const_cast<std::byte*>(pRaw), pSize);
     decode_per(message, context);
 
     std::string stred;
@@ -125,9 +156,23 @@ void ConnectionSession::decodeMessage(std::byte* pRaw, size_t pSize)
 
     logless::log(tetris_logger(), logless::DEBUG, logless::LOGALL,
         "ConnectionSession[fd=%d;]: receive: raw=%%; decoded=%s;", mFd, BufferLog(pSize, pRaw), stred.c_str());
-    // mMp.free(pRaw, pSize);
-    delete[] pRaw;
 
+    if (!mLoggedIn)
+    {
+        if (!std::holds_alternative<LoginRequest>(message))
+        {
+            mTetrisSim.onDisconnect(mFd);
+            return;
+        }
+        handleLogin(std::get<LoginRequest>(std::move(message)));
+        return;
+    }
+
+    if (std::holds_alternative<LoginRequest>(message))
+    {
+        mTetrisSim.onDisconnect(mFd);
+        return;
+    }
 
     std::visit([this, &message](auto& pMessage){
             onMsg(pMessage, message);
@@ -185,9 +230,14 @@ void ConnectionSession::send(TetrisProtocol& pMessage)
         "ConnectionSession[fd=%d;]: send: raw=%%; encoded=%s;", mFd, BufferLog(msgSize, buffer+2), stred.c_str());
     tetris_logger().flush();
 
-    auto res = ::send(mFd, buffer, msgSize+2, 0);
+    auto res = ::send(mFd, buffer, msgSize+2, MSG_NOSIGNAL);
     if (-1 == res)
     {
+        if (errno == EPIPE || errno == ECONNRESET || errno == ENOTCONN)
+        {
+            mTetrisSim.onDisconnect(mFd);
+            return;
+        }
         throw std::runtime_error(strerror(errno));
     }
 }

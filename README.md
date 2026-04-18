@@ -8,22 +8,25 @@ Use cases:
 
 ## Building
 
+Configure once from the repository root (CMake fetches [Logless](https://github.com/therooftopprinz/Logless) automatically if the `Logless/` submodule is not present; otherwise the submodule tree is used):
+
 ```sh
-./prepare_external.sh
-mkdir build
-cd build
+cmake -S . -B build
+cmake --build build
 ```
+
+With a normal git checkout, CMake runs `git submodule update --init --recursive` once at configure time (disable with `-DTETRIS_INIT_GIT_SUBMODULES=OFF`). If any of BFC, cum, or Logless are still missing, they are cloned with `FetchContent` into the build tree or under `TETRIS_BFC_ROOT` / `TETRIS_CUM_ROOT` / Logless paths. Override repository URLs or tags with cache variables `TETRIS_BFC_GIT_REPOSITORY`, `TETRIS_CUM_GIT_REPOSITORY`, `TETRIS_LOGLESS_GIT_REPOSITORY`, and the corresponding `*_GIT_TAG` variables if needed.
 
 ## Server
 
 ```sh
-make server
+cmake --build build --target server
 ```
 
 ## Default client
 
 ```sh
-make client
+cmake --build build --target client
 ```
 
 Program input arguments:

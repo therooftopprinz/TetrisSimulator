@@ -5,10 +5,9 @@
 
 #include <tetris_log.hpp>
 
-#include <interface/protocol.hpp>
+#include <interface/protocol_export.hpp>
 
 #include <IAttacker.hpp>
-#include <IExecutor.hpp>
 #include <ITetrisSimulator.hpp>
 #include <PlayerContext.hpp>
 
@@ -18,9 +17,8 @@ namespace tetris
 class CommonAttacker : public IAttacker
 {
 public:
-    CommonAttacker(IExecutor& pExecutor, const CreateGameRequest& pConfig, std::unordered_map<uint8_t, PlayerContext>& pPlayers, ITetrisSimulator& pSimulator)
-        : mExecutor(pExecutor)
-        , mConfig(pConfig)
+    CommonAttacker(const CreateGameRequest& pConfig, std::unordered_map<uint8_t, PlayerContext>& pPlayers, ITetrisSimulator& pSimulator)
+        : mConfig(pConfig)
         , mPlayers(pPlayers)
         , mCurrentTarget(pPlayers.end())
         , mSimulator(pSimulator)
@@ -134,8 +132,7 @@ private:
         mSimulator.cancelGameTimer(mTimerId);
         auto timediff = std::chrono::nanoseconds(mConfig.attackModeCommon.targetChangeTimeoutMs)*1000*1000;
         mTimerId = mSimulator.scheduleGameTimer(timediff, [this] {
-                bfc::light_function<void()> fn = [this]() -> void {onTimeout();};
-                mExecutor.trigger(std::move(fn));
+                onTimeout();
             });
     }
 
@@ -178,8 +175,6 @@ private:
 
         startTimer();
     }
-
-    IExecutor& mExecutor;
 
     const CreateGameRequest& mConfig;
     std::unordered_map<uint8_t, PlayerContext>& mPlayers;

@@ -6,7 +6,7 @@
 #include <cmath>
 #include <optional>
 
-#include <interface/protocol.hpp>
+#include <interface/protocol_export.hpp>
 
 #include <common/ITetrisBoard.hpp>
 #include <common/Terminoes.hpp>

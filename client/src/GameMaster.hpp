@@ -1,7 +1,7 @@
 #ifndef __GAMEMASTER_HPP__
 #define __GAMEMASTER_HPP__
 
-#include <interface/protocol.hpp>
+#include <interface/protocol_export.hpp>
 
 #include <common/Terminoes.hpp>
 
@@ -33,7 +33,9 @@ public:
 
         if (!mStarted)
         {
-            throw std::runtime_error("server-client expectation mismatch!");
+            // Stale PieceRequest after match end or during lobby transition — unblock server (empty list).
+            mClient.send(message);
+            return;
         }
 
         for (size_t i=0; i<pMsg.count; i++)
@@ -58,7 +60,7 @@ public:
     void onMsg(GameEndNotification&& pMsg)
     {
         mStarted = false;
-        mClient.consoleLog("[GameMaster]: game ended!");
+        mClient.consoleLog("[client] Game Ended!");
         mClient.notifyMatchEnded();
     }
 
@@ -66,7 +68,7 @@ public:
     {
         if (mStarted)
         {
-            mClient.consoleLog("[GameMaster]: Game already started!");
+            mClient.consoleLog("[client] Game already started!");
             return false;
         }
 

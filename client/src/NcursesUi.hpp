@@ -26,7 +26,7 @@ public:
     void shutdown();
 
     void appendLog(std::string line);
-    void syncInputLine(const std::string& clientName, const char* inputBuf, std::size_t inputLen, bool chatCompose);
+    void syncInputLine(const char* inputBuf, std::size_t inputLen, bool chatCompose);
     void fullRedraw(TetrisClient& client);
     void paintGame(Player& player, TetrisClient& client);
 

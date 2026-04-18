@@ -38,6 +38,7 @@ int getch(void);
 int keypad(WINDOW*, int);
 int nodelay(WINDOW*, int);
 int cbreak(void);
+int raw(void);
 int noecho(void);
 int nonl(void);
 int intrflush(WINDOW*, int);

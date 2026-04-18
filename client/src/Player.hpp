@@ -1,7 +1,7 @@
 #ifndef __PLAYER_HPP__
 #define __PLAYER_HPP__
 
-#include <interface/protocol.hpp>
+#include <interface/protocol_export.hpp>
 
 #include <deque>
 #include <optional>
@@ -95,6 +95,11 @@ public:
     {
         mClient.disableConsole();
         mClient.setKeyHandler([this](char key) -> void {
+                if (mClient.gameplayKeyRoutesToConsole(key))
+                {
+                    mClient.consoleIn(key);
+                    return;
+                }
                 keyIn(key);
             });
     }
@@ -267,7 +272,7 @@ private:
         mGameOverSequence.clear();
 
         mGameStarted = false;
-        mClient.consoleLog("[client]: match ended.");
+        mClient.consoleLog("[client] Match ended.");
         mClient.notifyMatchEnded();
     }
 
@@ -293,15 +298,15 @@ private:
             {
                 if (DeleteReason::DISCONNECTED == rem.reason)
                 {
-                    mClient.consoleLog("[client]: you were removed (peer disconnected).");
+                    mClient.consoleLog("[client] you were removed (peer disconnected).");
                 }
-                else if (DeleteReason::LEFT == rem.reason)
+                else if (DeleteReason::VOLUNTARY == rem.reason)
                 {
-                    mClient.consoleLog("[client]: returned to lobby.");
+                    mClient.consoleLog("[client] left the room.");
                 }
                 else
                 {
-                    mClient.consoleLog("[client]: you were removed from the game.");
+                    mClient.consoleLog("[client] you were removed from the game.");
                 }
                 mClient.requestExitToLobby();
                 return;

@@ -5,14 +5,13 @@
 #include <cstring>
 #include <stdexcept>
 #include <map>
-#include <mutex>
 #include <memory>
+#include <unordered_map>
 
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
-#include <bfc/thread_pool.hpp>
 #include <bfc/epoll_reactor.hpp>
 
 #include <tetris_log.hpp>
@@ -33,7 +32,8 @@ struct TetrisSimulatorConfig
 class TetrisSimulator : public ITetrisSimulator
 {
 public:
-    TetrisSimulator(const TetrisSimulatorConfig& pCfg)
+    TetrisSimulator(bfc::epoll_reactor<>& pReactor, const TetrisSimulatorConfig& pCfg)
+        : mReactor(pReactor)
     {
         mServerFd = socket(AF_INET, SOCK_STREAM, 0);
         if (-1 == mServerFd)
@@ -103,10 +103,7 @@ public:
         logless::log(tetris_logger(), logless::DEBUG, logless::LOGALL,
             "TetrisSimulator: connected client fd=%d; address=%s; port=%hu;", res, loc, ntohs(addr.sin_port));
 
-        std::unique_lock<std::mutex> lg(mConnectionsMutex);
         auto empRes = mConnections.emplace(res, std::make_shared<ConnectionSession>(res, *this));
-        lg.unlock();
-
         auto connection = empRes.first->second;
 
         if (!mReactor.add_read_rdy(res, [connection](){
@@ -122,8 +119,13 @@ public:
     void broadcastClientChat(const ClientChat& pMsg, int senderFd) override
     {
         TetrisProtocol message;
-        message = pMsg;
-        std::unique_lock<std::mutex> lg(mConnectionsMutex);
+        ClientChat out = pMsg;
+        const auto it = mFdToConnection.find(senderFd);
+        if (it != mFdToConnection.end())
+        {
+            out.username = it->second->clientDisplayName();
+        }
+        message = out;
         for (auto& c : mConnections)
         {
             if (c.first != senderFd)
@@ -133,27 +135,48 @@ public:
         }
     }
 
+    bool claimUsername(std::shared_ptr<ConnectionSession> session, const std::string& username) override
+    {
+        if (username.empty())
+        {
+            return false;
+        }
+        if (mUsernameToConnection.count(username))
+        {
+            return false;
+        }
+        mUsernameToConnection[username] = session;
+        mFdToConnection[session->fd()] = session;
+        return true;
+    }
+
     void onDisconnect(int pFd) override
     {
         logless::log(tetris_logger(), logless::DEBUG, logless::LOGALL,
             "TetrisSimulator: Disconnected client fd=%d;", pFd);
 
-        std::shared_ptr<ConnectionSession> session;
         {
-            std::unique_lock<std::mutex> lg(mConnectionsMutex);
-            auto it = mConnections.find(pFd);
-            if (it == mConnections.end())
+            const auto itc = mFdToConnection.find(pFd);
+            if (itc != mFdToConnection.end())
             {
-                return;
+                mUsernameToConnection.erase(itc->second->clientDisplayName());
+                mFdToConnection.erase(itc);
             }
-            session = it->second;
-            if (!mReactor.rem_read_rdy(pFd))
-            {
-                logless::log(tetris_logger(), logless::DEBUG, logless::LOGALL,
-                    "TetrisSimulator: Failed to delete client fd=%d; from EpollReactor, errno=%s;", pFd, strerror(errno));
-            }
-            mConnections.erase(it);
         }
+
+        std::shared_ptr<ConnectionSession> session;
+        auto it = mConnections.find(pFd);
+        if (it == mConnections.end())
+        {
+            return;
+        }
+        session = it->second;
+        if (!mReactor.rem_read_rdy(pFd))
+        {
+            logless::log(tetris_logger(), logless::DEBUG, logless::LOGALL,
+                "TetrisSimulator: Failed to delete client fd=%d; from EpollReactor, errno=%s;", pFd, strerror(errno));
+        }
+        mConnections.erase(it);
 
         if (auto game = session->attachedGame())
         {
@@ -161,14 +184,8 @@ public:
         }
     }
 
-    void run()
-    {
-        mReactor.run();
-    }
-
     std::shared_ptr<Game> getGame(uint32_t pGameId) override
     {
-        std::unique_lock<std::mutex> lg(mGamesMutex);
         if (!mGames.count(pGameId))
         {
             return nullptr;
@@ -179,7 +196,6 @@ public:
 
     int createGame(std::shared_ptr<Game> pGame) override
     {
-        std::unique_lock<std::mutex> lg(mGamesMutex);
         auto id = static_cast<uint32_t>(mGameIdCtr++);
         pGame->setGameId(id);
         mGames.emplace(id, std::move(pGame));
@@ -190,7 +206,6 @@ public:
 
     void destroyGame(uint32_t pGameId) override
     {
-        std::unique_lock<std::mutex> lg(mGamesMutex);
         mGames.erase(pGameId);
     }
 
@@ -221,14 +236,15 @@ public:
     }
 
 private:
+    bfc::epoll_reactor<>& mReactor;
+
+    std::unordered_map<std::string, std::shared_ptr<ConnectionSession>> mUsernameToConnection;
+    std::unordered_map<int, std::shared_ptr<ConnectionSession>> mFdToConnection;
+
     std::map<int, std::shared_ptr<ConnectionSession>> mConnections;
-    std::mutex mConnectionsMutex;
 
     std::map<uint32_t, std::shared_ptr<Game>> mGames;
     int mGameIdCtr = 0;
-    std::mutex mGamesMutex;
-
-    bfc::epoll_reactor<> mReactor;
 
     int mServerFd;
 };

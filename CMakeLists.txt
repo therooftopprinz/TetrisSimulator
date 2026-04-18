@@ -9,6 +9,27 @@ add_compile_options(-Wall -Werror -ggdb3 -O0)
 
 find_package(Threads REQUIRED)
 
+include("${CMAKE_SOURCE_DIR}/cmake/TetrisDeps.cmake")
+
+set(TETRIS_PROTOCOL_CUM "${CMAKE_SOURCE_DIR}/interface/protocol.cum")
+set(TETRIS_PROTOCOL_HPP "${CMAKE_SOURCE_DIR}/interface/protocol.hpp")
+set(TETRIS_GENERATE_CPP_PY "${CMAKE_SOURCE_DIR}/cum/generate_cpp.py")
+
+find_package(Python3 3 COMPONENTS Interpreter REQUIRED)
+
+add_custom_command(
+  OUTPUT "${TETRIS_PROTOCOL_HPP}"
+  COMMAND ${CMAKE_COMMAND}
+    -D "TETRIS_ROOT=${CMAKE_SOURCE_DIR}"
+    -D "PYTHON=${Python3_EXECUTABLE}"
+    -P "${CMAKE_SOURCE_DIR}/cmake/GenerateProtocol.cmake"
+  DEPENDS "${TETRIS_PROTOCOL_CUM}" "${TETRIS_GENERATE_CPP_PY}"
+  COMMENT "Generating interface/protocol.hpp from protocol.cum"
+  VERBATIM
+)
+
+add_custom_target(tetris_generate_protocol DEPENDS "${TETRIS_PROTOCOL_HPP}")
+
 find_library(TETRIS_NCURSES_LIBRARY NAMES ncursesw ncurses
   PATHS
     /usr/lib/x86_64-linux-gnu
@@ -60,10 +81,9 @@ endif()
 
 set(COMMON_INCLUDE_DIRS
   ${CMAKE_SOURCE_DIR}
-  ${CMAKE_SOURCE_DIR}/Logless/src
   ${CMAKE_SOURCE_DIR}/common/include
-  ${CMAKE_SOURCE_DIR}/BFC/src
-  ${CMAKE_SOURCE_DIR}/cum/src
+  "${TETRIS_BFC_ROOT}/src"
+  "${TETRIS_CUM_ROOT}/src"
   ${CMAKE_SOURCE_DIR}/interface
 )
 
@@ -77,11 +97,15 @@ file(GLOB_RECURSE COMMON_LIB_SOURCES CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/comm
 list(FILTER COMMON_LIB_SOURCES EXCLUDE REGEX ".*/main\\.cpp$")
 add_library(common STATIC ${COMMON_LIB_SOURCES})
 target_include_directories(common PUBLIC ${COMMON_INCLUDE_DIRS})
+target_link_libraries(common PUBLIC logless)
+add_dependencies(common tetris_generate_protocol)
 
 file(GLOB_RECURSE SERVER_LIB_SOURCES CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/server/src/*.cpp")
 list(FILTER SERVER_LIB_SOURCES EXCLUDE REGEX ".*/main\\.cpp$")
 add_library(server_lib STATIC ${SERVER_LIB_SOURCES})
 target_include_directories(server_lib PUBLIC ${COMMON_INCLUDE_DIRS} ${CMAKE_SOURCE_DIR}/server/src)
+target_link_libraries(server_lib PUBLIC logless)
+add_dependencies(server_lib tetris_generate_protocol)
 
 file(GLOB_RECURSE CLIENT_LIB_SOURCES CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/client/src/*.cpp")
 list(FILTER CLIENT_LIB_SOURCES EXCLUDE REGEX ".*/main\\.cpp$")
@@ -95,23 +119,14 @@ if(CLIENT_LIB_SOURCES)
   if(TETRIS_TINFO_LIBRARY)
     target_link_libraries(client_lib PUBLIC ${TETRIS_TINFO_LIBRARY})
   endif()
+  target_link_libraries(client_lib PUBLIC logless)
+  add_dependencies(client_lib tetris_generate_protocol)
 else()
   # client/src may be header-only plus main.cpp (matches empty client.a from configure.py)
   add_library(client_lib INTERFACE)
   target_include_directories(client_lib INTERFACE ${COMMON_INCLUDE_DIRS} ${CMAKE_SOURCE_DIR}/client/src)
+  target_link_libraries(client_lib INTERFACE logless)
 endif()
-
-if(EXISTS "${CMAKE_SOURCE_DIR}/Logless/build/liblogless.a")
-  set(LOGLESS_A "${CMAKE_SOURCE_DIR}/Logless/build/liblogless.a")
-elseif(EXISTS "${CMAKE_SOURCE_DIR}/Logless/build/logless.a")
-  set(LOGLESS_A "${CMAKE_SOURCE_DIR}/Logless/build/logless.a")
-else()
-  message(FATAL_ERROR
-    "Missing Logless static library under Logless/build/ (expected liblogless.a or logless.a).\n"
-    "From the repo root, initialize submodules and build Logless (e.g. cmake -S Logless -B Logless/build && cmake --build Logless/build).")
-endif()
-add_library(logless STATIC IMPORTED)
-set_target_properties(logless PROPERTIES IMPORTED_LOCATION "${LOGLESS_A}")
 
 file(GLOB_RECURSE COMMON_TEST_SOURCES CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/common/test/*.cpp")
 add_executable(common_test ${COMMON_TEST_SOURCES})
@@ -126,11 +141,11 @@ target_include_directories(server_test PRIVATE
   ${CMAKE_SOURCE_DIR}/server/src
   ${CMAKE_SOURCE_DIR}/server/test
 )
-target_link_libraries(server_test PRIVATE server_lib gtest_all logless Threads::Threads)
+target_link_libraries(server_test PRIVATE server_lib gtest_all Threads::Threads)
 
 add_executable(server server/src/main.cpp)
 target_include_directories(server PRIVATE ${COMMON_INCLUDE_DIRS} ${CMAKE_SOURCE_DIR}/server/src)
-target_link_libraries(server PRIVATE server_lib common logless Threads::Threads)
+target_link_libraries(server PRIVATE server_lib common Threads::Threads)
 
 file(GLOB_RECURSE CLIENT_TEST_SOURCES CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/client/test/*.cpp")
 add_executable(client_test ${CLIENT_TEST_SOURCES})
@@ -140,8 +155,12 @@ target_include_directories(client_test PRIVATE
   ${CMAKE_SOURCE_DIR}/client/src
   ${CMAKE_SOURCE_DIR}/client/test
 )
-target_link_libraries(client_test PRIVATE client_lib common gtest_all logless Threads::Threads)
+target_link_libraries(client_test PRIVATE client_lib common gtest_all Threads::Threads)
 
 add_executable(client client/src/main.cpp)
 target_include_directories(client PRIVATE ${COMMON_INCLUDE_DIRS} ${CMAKE_SOURCE_DIR}/client/src)
-target_link_libraries(client PRIVATE client_lib common logless Threads::Threads)
+target_link_libraries(client PRIVATE client_lib common Threads::Threads)
+if(NOT CLIENT_LIB_SOURCES)
+  add_dependencies(client tetris_generate_protocol)
+  add_dependencies(client_test tetris_generate_protocol)
+endif()

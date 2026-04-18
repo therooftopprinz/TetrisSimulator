@@ -1,49 +1,14 @@
-Type u8
-{
-    type(unsigned) width(8)
-};
+type u8Optional type = u8, optional =;
 
-Type i8
-{
-    type(signed) width(8)
-};
+type u8array type = u8, dynamic_array = 256;
 
-Type u8Optional
-{
-    type(u8) optional()
-};
+type u8arrayLarge type = u8, dynamic_array =;
 
-Type u8array
-{
-    type(u8) dynamic_array(256)
-};
+type u16Array type = u16, dynamic_array = 256;
 
-Type u8arrayLarge
-{
-    type(u8) dynamic_array()
-};
+type String type = string;
 
-Type u16
-{
-    type(unsigned) width(16)
-};
-
-Type u16Array
-{
-    type(u16) dynamic_array(256)
-};
-
-Type u64
-{
-    type(unsigned) width(64)
-};
-
-Type String
-{
-    type(asciiz)
-};
-
-Enumeration Action
+enumeration Action
 {
     LEFT,
     RIGHT,
@@ -55,7 +20,7 @@ Enumeration Action
     ROT_180
 };
 
-Enumeration Piece
+enumeration Piece
 {
     I,
     L,
@@ -66,26 +31,26 @@ Enumeration Piece
     T
 };
 
-Enumeration CodeType
+enumeration CodeType
 {
     TINY_ASM,
     TINY_BIN
 };
 
-Enumeration DeleteReason
+enumeration DeleteReason
 {
     DISCONNECTED,
     KICKED,
-    LEFT
+    VOLUNTARY
 };
 
-Enumeration PlayerMode
+enumeration PlayerMode
 {
     SPECTATOR,
     PLAYER
 };
 
-Enumeration AttackModeEnum
+enumeration AttackModeEnum
 {
     SEQUENTIAL,
     DIVIDE,
@@ -95,58 +60,71 @@ Enumeration AttackModeEnum
     ROULETTE
 };
 
-Enumeration CounteringType
+enumeration CounteringType
 {
     FULL,
     LIMITED,
     INSTANT
 };
 
-Enumeration BoardType
+enumeration BoardType
 {
     SRS,
     ARS,
     CULTRIS
 };
 
-Sequence PlayerInfo
+enumeration LoginResult
+{
+    OK,
+    ALREADY_EXIST
+};
+
+sequence LoginRequest
+{
+    String username
+};
+
+sequence LoginResponse
+{
+    LoginResult result
+};
+
+sequence PlayerInfo
 {
     u8 id,
     String name,
     PlayerMode mode
 };
 
-Type PlayerInfoList
-{
-    type(PlayerInfo) dynamic_array(256)
-};
+type PlayerInfoList type = PlayerInfo, dynamic_array = 256;
 
-Sequence Random
+sequence Random
 {
     u64 seed
 };
 
-Sequence GameScript
+sequence GameScript
 {
     CodeType type,
     u8arrayLarge code
 };
 
-Choice AttackMode
+choice AttackMode
 {
     AttackModeEnum,
     Random,
     GameScript
 };
 
-Sequence AttackModeCommon
+sequence AttackModeCommon
 {
     u16 targetChangeTimeoutMs,
     u16 attackDelayMs,
     CounteringType counteringType
 };
 
-Sequence CreateGameRequest
+sequence CreateGameRequest
 {
     u8 boardWidth,
     u8 boardHeight,
@@ -158,104 +136,89 @@ Sequence CreateGameRequest
     AttackModeCommon attackModeCommon
 };
 
-Sequence CreateGameReject
+sequence CreateGameReject
 {
     u8 spare
 };
 
-Sequence CreateGameAccept
+sequence CreateGameAccept
 {
     u64 gameId
 };
 
-Sequence GameStartIndication
+sequence GameStartIndication
 {
     u8 spare
 };
 
-Type PieceList
-{
-    type(Piece) dynamic_array(256)
-};
+type PieceList type = Piece, dynamic_array = 256;
 
-Sequence PieceRequest
+sequence PieceRequest
 {
     u8 count
 };
 
-Sequence PieceResponse
+sequence PieceResponse
 {
     PieceList pieceToAddList
 };
 
-Sequence AttackLinesRequest
+sequence AttackLinesRequest
 {
-    u8 count   
+    u8 count
 };
 
-Sequence AttackLinesResponse
+sequence AttackLinesResponse
 {
-    u16Array attackLinesToAddList 
+    u16Array attackLinesToAddList
 };
 
-Sequence AttackIndication
+sequence AttackIndication
 {
     u8 player,
     u8Optional attack,
     u8Optional warningLines
 };
 
-Sequence GameStartNotification
+sequence GameStartNotification
 {
     u8 spare
 };
 
-Sequence PlayerToRemove
+sequence PlayerToRemove
 {
     u8 id,
     DeleteReason reason
 };
 
-Type PlayerToRemoveList
-{
-    type(PlayerToRemove) dynamic_array(256)
-};
+type PlayerToRemoveList type = PlayerToRemove, dynamic_array = 256;
 
-Sequence PlayerUpdateNotification
+sequence PlayerUpdateNotification
 {
     PlayerInfoList playeToAddList,
     PlayerInfoList playerToModifyList,
     PlayerToRemoveList playerToDelete
 };
 
-Sequence Line
+sequence Line
 {
     u8 line,
     u16 diff
 };
 
-Type LineList
+type LineList type = Line, dynamic_array = 256;
+
+sequence PiecePosition
 {
-    type(Line) dynamic_array(256)
+    s8 x,
+    s8 y
 };
 
-Sequence PiecePosition
-{
-    i8 x,
-    i8 y
-};
+type PiecePositionOptional type = PiecePosition, optional =;
 
-Type PiecePositionOptional
-{
-    type(PiecePosition) optional()
-};
+type PieceOptional type = Piece, optional =;
 
-Type PieceOptional
-{
-    type(Piece) optional()
-};
-
-Sequence BoardUpdateNotification
+sequence BoardUpdateNotification
 {
     u8 player,
     PieceList pieceToAddList,
@@ -270,23 +233,23 @@ Sequence BoardUpdateNotification
     PiecePositionOptional position
 };
 
-Sequence GameOverNotification
+sequence GameOverNotification
 {
     u8 player
 };
 
-Sequence GameEndNotification
+sequence GameEndNotification
 {
     u8 spare
 };
 
-Sequence JoinRequest
+sequence JoinRequest
 {
     u64 gameId,
     u64 secret
 };
 
-Sequence JoinAccept
+sequence JoinAccept
 {
     u8 player,
     u64 secret,
@@ -295,30 +258,30 @@ Sequence JoinAccept
     PlayerInfoList playerToAddList
 };
 
-Sequence JoinReject
+sequence JoinReject
 {
     u8 spare
 };
 
-Sequence PlayerActionIndication
+sequence PlayerActionIndication
 {
     u8 player,
     u8 count,
     Action action
 };
 
-Sequence ClientChat
+sequence ClientChat
 {
-    String name,
+    String username,
     String message
 };
 
-Sequence LeaveIndication
+sequence LeaveIndication
 {
     u64 gameId
 };
 
-Choice TetrisProtocol
+choice TetrisProtocol
 {
     CreateGameRequest,
     CreateGameAccept,
@@ -341,5 +304,7 @@ Choice TetrisProtocol
     JoinReject,
     PlayerActionIndication,
     ClientChat,
-    LeaveIndication
+    LeaveIndication,
+    LoginRequest,
+    LoginResponse
 };

@@ -1,5 +1,6 @@
 #include <iostream>
 #include <regex>
+#include <cctype>
 #include <TetrisClient.hpp>
 #include <tetris_log.hpp>
 
@@ -9,12 +10,33 @@ namespace
 void printClientUsage(const char* argv0)
 {
     std::cerr
-        << "Usage: " << argv0 << " --server=<IPv4>:<port> [--cmd=<line>]\n\n"
+        << "Usage: " << argv0 << " --server=<IPv4>:<port> --username=<name> [--cmd=<line>]\n\n"
         << "Startup options (each argument must be --name=value):\n"
         << "  --server=<IPv4>:<port>  Required. TCP address of the Tetris server.\n"
+        << "  --username=<name>       Required. Letters and digits only, max 32. Sent at login.\n"
         << "  --cmd=<text>            Optional. One console line to run after connect\n"
         << "                          (for example: /create or /join id=1).\n\n"
         << "At the interactive prompt, lines without a leading / send chat; type \"/help\" for commands.\n";
+}
+
+std::string validateUsername(const std::string& s)
+{
+    if (s.empty())
+    {
+        return "Username must not be empty.";
+    }
+    if (s.size() > 32)
+    {
+        return "Username too long (max 32).";
+    }
+    for (unsigned char ch : s)
+    {
+        if (!std::isalnum(ch))
+        {
+            return "Username must contain only letters and digits.";
+        }
+    }
+    return {};
 }
 
 } // namespace
@@ -85,14 +107,25 @@ int main(int argc, const char *argv[])
 
     tetris::TetrisClientConfig config{};
 
-    auto address = parseIpPort(options); 
+    auto address = parseIpPort(options);
+
+    auto userIt = options.find("username");
+    if (userIt == options.cend())
+    {
+        printClientUsage(argv[0]);
+        throw std::runtime_error("Missing --username=<name>.");
+    }
+    if (auto err = validateUsername(userIt->second); !err.empty())
+    {
+        throw std::runtime_error(err);
+    }
+    config.username = userIt->second;
 
     auto cmdIt = options.find("cmd");
     if (options.end() != cmdIt)
     {
         config.cmd.emplace(cmdIt->second);
     }
-
 
     config.ip = address.first;
     config.port = address.second;

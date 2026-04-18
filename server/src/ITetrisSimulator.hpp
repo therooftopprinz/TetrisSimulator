@@ -4,6 +4,7 @@
 #include <chrono>
 #include <memory>
 #include <optional>
+#include <string>
 
 #include <bfc/function.hpp>
 
@@ -14,6 +15,7 @@ struct ClientChat;
 namespace tetris
 {
 
+class ConnectionSession;
 class Game;
 
 struct IConnectionCallback
@@ -34,6 +36,7 @@ struct ITetrisSimulator : IGameManager, IConnectionCallback
     virtual bool cancelGameTimer(GameTimerId id) = 0;
     virtual void cancelGameTimer(std::optional<GameTimerId>& slot) = 0;
     virtual void broadcastClientChat(const ClientChat& pMsg, int senderFd) = 0;
+    virtual bool claimUsername(std::shared_ptr<ConnectionSession> session, const std::string& username) = 0;
 };
 
 } // namespace tetris

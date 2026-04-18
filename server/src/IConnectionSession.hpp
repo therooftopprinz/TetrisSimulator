@@ -1,7 +1,7 @@
 #ifndef __ICONNECTIONSESSION_HPP__
 #define __ICONNECTIONSESSION_HPP__
 
-#include <interface/protocol.hpp>
+#include <interface/protocol_export.hpp>
 
 namespace tetris
 {

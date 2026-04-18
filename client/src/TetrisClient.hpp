@@ -7,9 +7,10 @@
 #include <cstring>
 #include <cstdio>
 #include <cctype>
+#include <cerrno>
 #include <cstdint>
+#include <cstdlib>
 #include <iostream>
-#include <random>
 #include <sstream>
 #include <string_view>
 #include <variant>
@@ -18,8 +19,11 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <unistd.h>
+#include <fcntl.h>
+#include <csignal>
 
 #include <memory>
+#include <optional>
 
 #include "NcursesUi.hpp"
 
@@ -28,7 +32,7 @@
 
 #include <tetris_log.hpp>
 
-#include <interface/protocol.hpp>
+#include <interface/protocol_export.hpp>
 
 #include <common/StandardTetrisBoard.hpp>
 
@@ -39,25 +43,21 @@
 namespace tetris
 {
 
-inline std::string generateRandomDisplayName()
+namespace detail
 {
-    static constexpr char kVowels[] = "aeiou";
-    static constexpr char kConsonants[] = "bcdfghjklmnpqrstvwxyz";
-    std::random_device rd;
-    std::mt19937 gen(rd());
-    const int len = 4 + static_cast<int>(gen() % 2);
-    const bool vowelFirst = (gen() % 2) == 0;
-    std::uniform_int_distribution<int> vDist(0, 4);
-    std::uniform_int_distribution<int> cDist(0, int(sizeof(kConsonants) - 2));
-    std::string out;
-    out.reserve(static_cast<size_t>(len));
-    for (int i = 0; i < len; ++i)
+
+inline int g_clientShutdownPipeWrite = -1;
+
+inline void clientShutdownSignalHandler(int)
+{
+    unsigned char b = 1;
+    if (g_clientShutdownPipeWrite >= 0)
     {
-        const bool v = (i % 2 == 0) ? vowelFirst : !vowelFirst;
-        out += v ? kVowels[vDist(gen)] : kConsonants[cDist(gen)];
+        (void)::write(g_clientShutdownPipeWrite, &b, 1);
     }
-    return out;
 }
+
+} // namespace detail
 
 struct TetrisClientConfig
 {
@@ -66,6 +66,7 @@ struct TetrisClientConfig
     uint32_t operand;
     uint32_t ip;
     uint16_t port;
+    std::string username;
     std::optional<std::string> cmd;
 };
 
@@ -75,7 +76,7 @@ class TetrisClient : public ITetrisClient
 
 public:
     TetrisClient(const TetrisClientConfig& pConfig)
-        : mClientName(generateRandomDisplayName())
+        : mClientName(pConfig.username)
     {
         mFd = socket(AF_INET, SOCK_STREAM, 0);
         if (-1 == mFd)
@@ -101,6 +102,8 @@ public:
             throw std::runtime_error(strerror(errno));
         }
 
+        performBlockingLogin(pConfig.username);
+
         if (!mReactor.add_read_rdy(mFd, [this](){
                 onClientReadAvailable();
             }))
@@ -110,9 +113,6 @@ public:
 
         initTerminal();
 
-        mCmdMan.add("/help", [this](bfc::args_map&& pArgs) -> std::string {
-                return cmdHelp(std::move(pArgs));
-            });
         mCmdMan.add("/exit", [this](bfc::args_map&&) -> std::string {
                 mReactor.stop();
                 return "exiting...";
@@ -123,19 +123,16 @@ public:
         mCmdMan.add("/join", [this](bfc::args_map&& pArgs) -> std::string {
                 return cmdJoin(std::move(pArgs));
             });
-        mCmdMan.add("/name", [this](bfc::args_map&& pArgs) -> std::string {
-                return cmdName(std::move(pArgs));
-            });
         mCmdMan.add("/start", [this](bfc::args_map&& pArgs) -> std::string {
                 return cmdStart(std::move(pArgs));
             });
-        mCmdMan.add("/lobby", [this](bfc::args_map&&) -> std::string {
-                return cmdLobby();
+        mCmdMan.add("/leave", [this](bfc::args_map&&) -> std::string {
+                return cmdLeave();
             });
 
         enableConsole();
-        pushDisplayNameToServer();
-        
+        consoleLog("[client] ", interactiveHelpText());
+
         if (pConfig.cmd)
         {
             auto cmd = *pConfig.cmd + "\n"; 
@@ -144,6 +141,8 @@ public:
                 consoleIn(i);
             }
         }
+
+        installShutdownSignals();
     }
 
     void run()
@@ -153,6 +152,20 @@ public:
 
     ~TetrisClient() override
     {
+        if (mShutdownPipe[0] != -1)
+        {
+            struct sigaction saDefault{};
+            saDefault.sa_handler = SIG_DFL;
+            sigaction(SIGINT, &saDefault, nullptr);
+            sigaction(SIGTERM, &saDefault, nullptr);
+            if (detail::g_clientShutdownPipeWrite == mShutdownPipe[1])
+            {
+                detail::g_clientShutdownPipeWrite = -1;
+            }
+            ::close(mShutdownPipe[0]);
+            ::close(mShutdownPipe[1]);
+            mShutdownPipe[0] = mShutdownPipe[1] = -1;
+        }
         if (mNcurses)
         {
             mNcurses->shutdown();
@@ -188,6 +201,12 @@ public:
         {
             mNcurses->fullRedraw(*this);
         }
+    }
+
+    bool gameplayKeyRoutesToConsole(char key) const override
+    {
+        return (mConsoleInputBufferIdx > 0 && mConsoleInputBuffer[0] == '/')
+            || key == '/';
     }
 
     bool tryHandleGameplayChat(char key) override
@@ -233,16 +252,63 @@ public:
 
     void sendLeaveIndication() override
     {
-        if (-1 == mFd || 0 == mLobbyGameId)
+        if (-1 == mFd || !mLobbyGameId.has_value())
         {
             return;
         }
         TetrisProtocol message = LeaveIndication{};
-        std::get<LeaveIndication>(message).gameId = mLobbyGameId;
+        std::get<LeaveIndication>(message).gameId = *mLobbyGameId;
         send(message);
     }
 
 private:
+    void installShutdownSignals()
+    {
+        if (mShutdownPipe[0] != -1)
+        {
+            return;
+        }
+        if (pipe2(mShutdownPipe, O_CLOEXEC) != 0)
+        {
+            return;
+        }
+        detail::g_clientShutdownPipeWrite = mShutdownPipe[1];
+        if (!mReactor.add_read_rdy(mShutdownPipe[0], [this]() {
+                onShutdownPipeReadable();
+            }))
+        {
+            detail::g_clientShutdownPipeWrite = -1;
+            ::close(mShutdownPipe[0]);
+            ::close(mShutdownPipe[1]);
+            mShutdownPipe[0] = mShutdownPipe[1] = -1;
+            return;
+        }
+        struct sigaction sa{};
+        sa.sa_handler = detail::clientShutdownSignalHandler;
+        sigemptyset(&sa.sa_mask);
+        sa.sa_flags = SA_RESTART;
+        sigaction(SIGINT, &sa, nullptr);
+        sigaction(SIGTERM, &sa, nullptr);
+    }
+
+    void onShutdownPipeReadable()
+    {
+        char drain[32];
+        (void)::read(mShutdownPipe[0], drain, sizeof drain);
+        try
+        {
+            sendLeaveIndication();
+        }
+        catch (...)
+        {
+        }
+        if (-1 != mFd)
+        {
+            (void)::shutdown(mFd, SHUT_RDWR);
+        }
+        mReactor.stop();
+    }
+
     void applyLobbyExitIfPending(bool force = false)
     {
         if (!force && !mPendingLobbyExit)
@@ -250,7 +316,7 @@ private:
             return;
         }
         mPendingLobbyExit = false;
-        mLobbyGameId = 0;
+        mLobbyGameId.reset();
         mMatchEndedAwaitingLobby = false;
         mPlayer.reset();
         mGm.reset();
@@ -271,11 +337,11 @@ private:
         int readSize = 0;
         if (WAIT_HEADER == mReadState)
         {
-            readSize = 2;
+            readSize = 2 - static_cast<int>(mBuffIdx);
         }
         else
         {
-            readSize = mExpectedReadSize - mBuffIdx;
+            readSize = mExpectedReadSize - static_cast<int>(mBuffIdx);
         }
 
         auto res = read(mFd, mBuff+mBuffIdx, readSize);
@@ -293,22 +359,39 @@ private:
                 mFd = -1;
             }
             applyLobbyExitIfPending(true);
-            consoleLog("[client]: server disconnected.");
+            consoleLog("[client] server disconnected.");
             mReactor.stop();
             return;
         }
 
-        mBuffIdx += res;
+        mBuffIdx += static_cast<uint16_t>(res);
 
         if (WAIT_HEADER == mReadState)
         {
+            if (mBuffIdx < 2)
+            {
+                return;
+            }
             std::memcpy(&mExpectedReadSize, mBuff, 2);
             mBuffIdx = 0;
+            if (mExpectedReadSize <= 0 || mExpectedReadSize > static_cast<int>(sizeof(mBuff)))
+            {
+                if (-1 != mFd)
+                {
+                    mReactor.rem_read_rdy(mFd);
+                    close(mFd);
+                    mFd = -1;
+                }
+                applyLobbyExitIfPending(true);
+                consoleLog("[client] invalid frame from server.");
+                mReactor.stop();
+                return;
+            }
             mReadState = WAIT_REMAINING;
             return;
         }
 
-        if (mExpectedReadSize == mBuffIdx)
+        if (mExpectedReadSize == static_cast<int>(mBuffIdx))
         {
             decodeMessage();
             mReadState = WAIT_HEADER;
@@ -341,7 +424,12 @@ private:
 
     void onMsg(ClientChat&& pMsg)
     {
-        consoleLog("[chat] ", pMsg.name, ": ", pMsg.message);
+        std::string who = pMsg.username;
+        if (who.empty())
+        {
+            who = "?";
+        }
+        consoleLog("[chat] ", who, ": ", pMsg.message);
     }
 
     template <typename T>
@@ -357,7 +445,8 @@ private:
         }
         else
         {
-            throw std::runtime_error("Unhandled Message");
+            // Late or duplicate server messages (e.g. after /leave before socket drain) — safe to ignore.
+            (void)pMsg;
         }
     }
 
@@ -370,7 +459,7 @@ private:
 
         mState = GM_ACTIVE;
         mLobbyGameId = pMsg.gameId;
-        consoleLog("[client]: Game created! id=", pMsg.gameId);
+        consoleLog("[client] Game created! id=", pMsg.gameId);
     }
 
     void onMsg(CreateGameReject&& pMsg)
@@ -381,7 +470,7 @@ private:
         }
 
         mState = IDLE;
-        mLobbyGameId = 0;
+        mLobbyGameId.reset();
         mGm.reset();
     }
 
@@ -393,7 +482,7 @@ private:
         }
 
         mState = PLAYER_ACTIVE;
-        consoleLog("[client]: Player joined id=", unsigned(pMsg.player), "!");
+        consoleLog("[client] Player joined id=", unsigned(pMsg.player), "!");
 
         mPlayer.emplace((ITetrisClient&)*this,  std::move(pMsg));
     }
@@ -406,7 +495,7 @@ private:
         }
 
         mState = IDLE;
-        mLobbyGameId = 0;
+        mLobbyGameId.reset();
         mPlayer.reset();
     }
 
@@ -495,46 +584,132 @@ private:
         return {};
     }
 
-    std::string cmdHelp(bfc::args_map&&)
+    static std::string_view trimView(std::string_view sv)
+    {
+        auto b = std::find_if(sv.begin(), sv.end(), [](unsigned char c) { return !std::isspace(c); });
+        auto e = std::find_if(sv.rbegin(), sv.rend(), [](unsigned char c) { return !std::isspace(c); }).base();
+        if (b >= e)
+        {
+            return {};
+        }
+        return std::string_view(&*b, static_cast<size_t>(e - b));
+    }
+
+    static std::string firstToken(std::string_view sv)
+    {
+        sv = trimView(sv);
+        if (sv.empty())
+        {
+            return {};
+        }
+        auto sp = std::find_if(sv.begin(), sv.end(), [](unsigned char c) { return std::isspace(c); });
+        return std::string(sv.begin(), sp);
+    }
+
+    static std::string toLowerAscii(std::string s)
+    {
+        for (char& c : s)
+        {
+            c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        }
+        return s;
+    }
+
+    static std::string normalizeHelpTopic(std::string topic)
+    {
+        topic = toLowerAscii(std::move(topic));
+        if (!topic.empty() && topic.front() == '/')
+        {
+            topic.erase(0, 1);
+        }
+        return topic;
+    }
+
+    /** One-line list for startup and bare /help. */
+    static std::string interactiveHelpText()
     {
         std::ostringstream o;
         o << "Interactive commands start with /. Plain text (no leading /) sends chat to all connections.\n"
-          << "Arguments are key=value, space-separated:\n\n"
-          << "  /help\n"
-          << "      Show this reference.\n\n"
-          << "  /exit\n"
-          << "      Stop the client and exit the process.\n\n"
-          << "  /name name=<name>\n"
-          << "      Set display name (alphanumeric, max 32). Sent to the server for join and chat.\n\n"
-          << "  /create [width=<n>] [height=<n>] [lock=<ms>] [clear=<ms>] [board=<type>]\n"
-          << "          [target=<ms>] [attackDelay=<ms>] [attack=<mode>] [counter=<type>]\n"
-          << "          [seed=<n>] (seed only with attack=random)\n"
-          << "      Request a new game (become game master). Only from idle state.\n"
-          << "      width        Board width in cells (default 10).\n"
-          << "      height       Board height in cells (default 24).\n"
-          << "      lock         Piece lock timeout in milliseconds (default 1000).\n"
-          << "      clear        Line clear timeout in ms (default 0).\n"
-          << "      board        SRS, ARS, or CULTRIS (default SRS).\n"
-          << "      target       Attack target-change timeout in ms (default 2000).\n"
-          << "      attackDelay  Delay before outgoing attacks in ms (default 0).\n"
-          << "      attack       SEQUENTIAL, DIVIDE, TO_ALL, TO_MOST, TO_SELF, ROULETTE,\n"
-          << "                   or RANDOM (protocol Random seed; optional seed=).\n"
-          << "      counter      Countering: FULL, LIMITED, or INSTANT (default FULL).\n"
-          << "      Example: /create attack=divide counter=limited attackDelay=100 target=3000\n\n"
-          << "  /join id=<gameId>\n"
-          << "      Join an existing game as a player. id is required. Only from idle.\n"
-          << "      Your current display name (random on startup, see /name) is used as the player name.\n"
-          << "      Example: /join id=1\n\n"
-          << "  /start\n"
-          << "      Tell the server to start the match (game master only, after create is accepted).\n\n"
-          << "  /lobby\n"
-          << "      After the match ends, leave the post-game screen (chat + frozen boards) and return to the lobby.\n";
+          << "Arguments are key=value, space-separated. Use /help <command> for full syntax.\n\n"
+          << "  /help [command] - List commands, or detailed help for one command.\n"
+          << "  /exit - Stop the client and exit the process.\n"
+          << "  /create - Request a new game (game master); optional width, height, lock, board, attack, ...\n"
+          << "  /join - Join a game by id=<gameId> (idle only).\n"
+          << "  /start - Start the match (GM: first time after /create, or /start again for another round in the same room).\n"
+          << "  /leave - Leave the game (disconnect from the room); use before /create if you want a new game id.\n";
         return o.str();
+    }
+
+    static std::string helpDetailForTopic(const std::string& topicIn)
+    {
+        const std::string t = normalizeHelpTopic(topicIn);
+        if (t.empty() || t == "help")
+        {
+            return std::string(
+                "/help\n"
+                "    Show a short list of commands with one-line descriptions.\n"
+                "/help <command>\n"
+                "    Full documentation for one command. Commands: help, exit, create, join, start, leave.\n"
+                "    Example: /help create\n");
+        }
+        if (t == "exit")
+        {
+            return std::string(
+                "/exit\n"
+                "    Stop the client reactor and exit the process.\n");
+        }
+        if (t == "create")
+        {
+            return std::string(
+                "/create [width=<n>] [height=<n>] [lock=<ms>] [clear=<ms>] [board=<type>]\n"
+                "        [target=<ms>] [attackDelay=<ms>] [attack=<mode>] [counter=<type>]\n"
+                "        [seed=<n>] (seed only with attack=random)\n"
+                "    Request a new game (become game master). Only from idle (use /leave to leave a room first).\n"
+                "    width        Board width in cells (default 10).\n"
+                "    height       Board height in cells (default 24).\n"
+                "    lock         Piece lock timeout in milliseconds (default 1000).\n"
+                "    clear        Line clear timeout in ms (default 0).\n"
+                "    board        SRS, ARS, or CULTRIS (default SRS).\n"
+                "    target       Attack target-change timeout in ms (default 2000).\n"
+                "    attackDelay  Delay before outgoing attacks in ms (default 0).\n"
+                "    attack       SEQUENTIAL, DIVIDE, TO_ALL, TO_MOST, TO_SELF, ROULETTE,\n"
+                "                 or RANDOM (optional seed=<n>).\n"
+                "    counter      Countering: FULL, LIMITED, or INSTANT (default FULL).\n"
+                "    Example: /create attack=divide counter=limited attackDelay=100 target=3000\n");
+        }
+        if (t == "join")
+        {
+            return std::string(
+                "/join id=<gameId>\n"
+                "    Join an existing game as a player. id is required. Only from idle.\n"
+                "    Your login name (--username=) is used as the player name.\n"
+                "    Example: /join id=1\n");
+        }
+        if (t == "start")
+        {
+            return std::string(
+                "/start\n"
+                "    Tell the server to start the match (game master only).\n"
+                "    Use once after /create for the first round; after a match ends, /start again for a rematch in the same room.\n"
+                "    Use /leave first if you want to leave the room or call /create for a new game (requires idle).\n");
+        }
+        if (t == "leave")
+        {
+            return std::string(
+                "/leave\n"
+                "    Leave the current room at any time (waiting room, during a match, or after a match ends).\n"
+                "    After a match ends, also dismisses the post-game screen (chat + frozen boards).\n");
+        }
+        return "Unknown command `" + topicIn + "`. Type /help for a list; topics: help, exit, create, join, start, leave.\n";
     }
 
     std::string cmdStart(bfc::args_map&&)
     {
         if (GM_ACTIVE != mState)
+        {
+            return "Can't start game!";
+        }
+        if (!mGm)
         {
             return "Can't start game!";
         }
@@ -549,21 +724,33 @@ private:
         }
     }
 
-    std::string cmdLobby()
+    std::string cmdLeave()
     {
-        if (!mMatchEndedAwaitingLobby)
+        const bool inRoom = (GM_INIT == mState || GM_ACTIVE == mState
+            || PLAYER_INIT == mState || PLAYER_ACTIVE == mState);
+        if (!inRoom)
         {
-            return "Nothing to dismiss. /lobby is only used after a match ends to return to the lobby.";
+            return "Not in a game. /leave only applies while you are in a room (after /create or /join).";
         }
         mMatchEndedAwaitingLobby = false;
+        if (inRoom)
+        {
+            sendLeaveIndication();
+        }
         requestExitToLobby();
-        return "Returning to lobby...";
+        applyLobbyExitIfPending();
+        return "Leaving game...";
     }
 
     std::string cmdCreate(bfc::args_map&& pArgs)
     {
         if (IDLE != mState)
         {
+            if (mMatchEndedAwaitingLobby
+                && (GM_ACTIVE == mState || PLAYER_ACTIVE == mState || GM_INIT == mState || PLAYER_INIT == mState))
+            {
+                return "Match ended. Use /leave first; then /create a new game. /start is only for the first start after /create.";
+            }
             return "Can't create game!";
         }
 
@@ -649,29 +836,6 @@ private:
         return "Creating game...";
     }
 
-    std::string cmdName(bfc::args_map&& pArgs)
-    {
-        auto n = pArgs.arg("name");
-        if (!n || n->empty())
-        {
-            return "Usage: /name name=<name> (letters and digits only, max 32).";
-        }
-        if (n->size() > 32)
-        {
-            return "Name too long (max 32).";
-        }
-        for (unsigned char ch : *n)
-        {
-            if (!std::isalnum(ch))
-            {
-                return "Name must contain only letters and digits.";
-            }
-        }
-        mClientName = *n;
-        pushDisplayNameToServer();
-        return std::string("Name set to ") + mClientName + ".";
-    }
-
     std::string cmdJoin(bfc::args_map&& pArgs)
     {
         if (IDLE != mState)
@@ -697,13 +861,61 @@ private:
         return "Joining...";
     }
 
-    void pushDisplayNameToServer()
+    static void readFdFully(int pFd, void* pBuf, size_t pLen)
     {
-        TetrisProtocol message = ClientChat{};
-        auto& chat = std::get<ClientChat>(message);
-        chat.name = mClientName;
-        chat.message.clear();
-        send(message);
+        auto* p = static_cast<char*>(pBuf);
+        size_t got = 0;
+        while (got < pLen)
+        {
+            const ssize_t n = ::read(pFd, p + got, pLen - got);
+            if (n < 0)
+            {
+                throw std::runtime_error(strerror(errno));
+            }
+            if (n == 0)
+            {
+                throw std::runtime_error("connection closed while reading");
+            }
+            got += static_cast<size_t>(n);
+        }
+    }
+
+    void performBlockingLogin(const std::string& pUsername)
+    {
+        TetrisProtocol out = LoginRequest{};
+        std::get<LoginRequest>(out).username = pUsername;
+        send(out);
+
+        uint16_t payloadSz = 0;
+        readFdFully(mFd, &payloadSz, sizeof(payloadSz));
+        std::byte body[512];
+        if (payloadSz > sizeof(body))
+        {
+            std::cout << "Login failed: invalid response from server.\n" << std::flush;
+            std::exit(1);
+        }
+        readFdFully(mFd, body, payloadSz);
+
+        TetrisProtocol response;
+        cum::per_codec_ctx ctx(body, payloadSz);
+        decode_per(response, ctx);
+
+        if (!std::holds_alternative<LoginResponse>(response))
+        {
+            std::cout << "Login failed: unexpected response from server.\n" << std::flush;
+            std::exit(1);
+        }
+        const LoginResult r = std::get<LoginResponse>(response).result;
+        if (r == LoginResult::ALREADY_EXIST)
+        {
+            std::cout << "Login failed: username already in use.\n" << std::flush;
+            std::exit(1);
+        }
+        if (r != LoginResult::OK)
+        {
+            std::cout << "Login failed.\n" << std::flush;
+            std::exit(1);
+        }
     }
 
     void send(TetrisProtocol& pMessage)
@@ -721,14 +933,19 @@ private:
             "TetrisClient: send: raw=%%; encoded=%s;", BufferLog(msgSize, buffer), stred.c_str());
         tetris_logger().flush();
 
-        auto res = ::send(mFd, buffer, msgSize+2, 0);
+        auto res = ::send(mFd, buffer, msgSize+2, MSG_NOSIGNAL);
         if (-1 == res)
         {
+            if (errno == EPIPE || errno == ECONNRESET || errno == ENOTCONN)
+            {
+                mReactor.stop();
+                return;
+            }
             throw std::runtime_error(strerror(errno));
         }
     }
 
-    void consoleIn(char pKey)
+    void consoleIn(char pKey) override
     {
         if (mConsolseWaitChar)
         {
@@ -748,7 +965,8 @@ private:
         }
         if (3 == static_cast<unsigned char>(pKey))
         {
-            if (0 != mLobbyGameId && GM_ACTIVE == mState)
+            if (mLobbyGameId.has_value()
+                && (GM_ACTIVE == mState || PLAYER_ACTIVE == mState || PLAYER_INIT == mState))
             {
                 sendLeaveIndication();
                 requestExitToLobby();
@@ -765,7 +983,7 @@ private:
             mConsoleInputBufferIdx--;
             if (mNcurses)
             {
-                mNcurses->syncInputLine(mClientName, mConsoleInputBuffer, mConsoleInputBufferIdx, mGameplayChatCompose);
+                mNcurses->syncInputLine(mConsoleInputBuffer, mConsoleInputBufferIdx, mGameplayChatCompose);
                 mNcurses->fullRedraw(*this);
             }
             else
@@ -803,21 +1021,33 @@ private:
             {
                 TetrisProtocol message = ClientChat{};
                 auto& chat = std::get<ClientChat>(message);
-                chat.name = mClientName;
                 chat.message = command;
                 send(message);
-                consoleLog("[You]: ", command);
+                consoleLog("[chat] you: ", command);
+                return;
+            }
+            if (command.rfind("/help", 0) == 0)
+            {
+                std::string_view rest{command};
+                rest.remove_prefix(5);
+                rest = trimView(rest);
+                if (rest.empty())
+                {
+                    consoleLog("[client] ", interactiveHelpText());
+                    return;
+                }
+                consoleLog("[client] ", helpDetailForTopic(firstToken(rest)));
                 return;
             }
             auto res = mCmdMan.execute(command);
-            consoleLog(command, " : ", res);
+            consoleLog("[client] ", res);
             return;
         }
 
         if (mNcurses)
         {
             mConsoleInputBuffer[mConsoleInputBufferIdx++] = pKey;
-            mNcurses->syncInputLine(mClientName, mConsoleInputBuffer, mConsoleInputBufferIdx, mGameplayChatCompose);
+            mNcurses->syncInputLine(mConsoleInputBuffer, mConsoleInputBufferIdx, mGameplayChatCompose);
             mNcurses->fullRedraw(*this);
         }
         else
@@ -883,7 +1113,28 @@ private:
         {
             if (!out.empty())
             {
-                mNcurses->appendLog(out);
+                std::size_t i = 0;
+                while (i < out.size())
+                {
+                    const std::size_t j = out.find('\n', i);
+                    if (j == std::string::npos)
+                    {
+                        std::string line = out.substr(i);
+                        while (!line.empty() && line.back() == '\r')
+                        {
+                            line.pop_back();
+                        }
+                        mNcurses->appendLog(std::move(line));
+                        break;
+                    }
+                    std::string line = out.substr(i, j - i);
+                    while (!line.empty() && line.back() == '\r')
+                    {
+                        line.pop_back();
+                    }
+                    mNcurses->appendLog(std::move(line));
+                    i = j + 1;
+                }
             }
             mNcurses->fullRedraw(*this);
             return;
@@ -922,7 +1173,7 @@ private:
         mGameplayChatCompose = false;
         if (announce)
         {
-            consoleLog("[console]: enabling...");
+            consoleLog("[client] Ready.");
         }
     }
 
@@ -949,12 +1200,14 @@ private:
     enum ClientState {IDLE, GM_INIT, GM_ACTIVE, PLAYER_INIT, PLAYER_ACTIVE};
     ClientState mState = IDLE;
     bool mPendingLobbyExit = false;
-    uint64_t mLobbyGameId = 0;
+    std::optional<uint64_t> mLobbyGameId;
 
     bfc::command_manager<> mCmdMan;
 
     bfc::epoll_reactor<> mReactor;
     bfc::light_function<void(char)> mKeyHandler;
+
+    int mShutdownPipe[2] = {-1, -1};
 
     std::byte mBuff[512];
     uint16_t mBuffIdx = 0;
