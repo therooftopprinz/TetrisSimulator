@@ -8,12 +8,9 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 
-#include <logless/Logger.hpp>
-
-#include <bfc/MemoryPool.hpp>
-#include <bfc/Singleton.hpp>
-#include <bfc/Timer.hpp>
-#include <bfc/ThreadPool.hpp>
+#include <bfc/memory_pool.hpp>
+#include <singleton.hpp>
+#include <bfc/thread_pool.hpp>
 
 #include <interface/protocol.hpp>
 
@@ -35,9 +32,19 @@ public:
 
     ConnectionSession& operator=(const ConnectionSession&) = delete;
 
+    std::shared_ptr<Game> attachedGame() const { return mGame; }
+
     void reset();
     void handleRead();
     void decodeMessage(std::byte* pRaw, size_t pSize);
+
+    const std::string& clientDisplayName() const override;
+
+    void send(TetrisProtocol& pMessage) override;
+
+    void onMsg(ClientChat& pMsg, TetrisProtocol& pParent);
+
+    void onMsg(LeaveIndication&& pMsg, TetrisProtocol& pParent);
 
     template <typename T>
     void onMsg(T&& pMsg, TetrisProtocol& pParent)
@@ -57,14 +64,14 @@ public:
     {
     }
 
-private:
+    void disassociateGame() override;
 
-    void disassociateGame();
+private:
 
     void onMsg(CreateGameRequest&& pMsg);
     void onMsg(JoinRequest&& pMsg);
 
-    void send(TetrisProtocol& pMessage);
+    std::string mClientDisplayName;
 
     std::byte mBuff[512];
     uint16_t mBuffIdx = 0;
@@ -76,9 +83,8 @@ private:
     SessionMode mSessionMode = IDLE;
     ITetrisSimulator& mTetrisSim;
     std::shared_ptr<Game> mGame;
-    bfc::ThreadPool<>& mTp;
-    bfc::Log2MemoryPool<>& mMp;
-    bfc::Timer<>& mTimer;
+    bfc::thread_pool<>& mTp;
+    bfc::log2_memory_pool<>& mMp;
 };
 
 } // namespace tetris

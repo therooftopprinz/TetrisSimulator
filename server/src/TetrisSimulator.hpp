@@ -1,6 +1,7 @@
 #ifndef __TETRISSIMULATOR_HPP__
 #define __TETRISSIMULATOR_HPP__
 
+#include <chrono>
 #include <cstring>
 #include <stdexcept>
 #include <map>
@@ -11,11 +12,10 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
-#include <bfc/ThreadPool.hpp>
-#include <bfc/EpollReactor.hpp>
-#include <bfc/Timer.hpp>
+#include <bfc/thread_pool.hpp>
+#include <bfc/epoll_reactor.hpp>
 
-#include <logless/Logger.hpp>
+#include <tetris_log.hpp>
 
 #include <common/StandardTetrisBoard.hpp>
 #include <ConnectionSession.hpp>
@@ -56,7 +56,8 @@ public:
 
         char loc[24];
         inet_ntop(AF_INET, &addr.sin_addr.s_addr, loc, sizeof(loc));
-        Logless("TetisSimulator: binding _:_", loc, pCfg.port);
+        logless::log(tetris_logger(), logless::DEBUG, logless::LOGALL,
+            "TetrisSimulator: binding %s; port=%hu;", loc, pCfg.port);
 
         res = bind(mServerFd, (sockaddr*)&addr, sizeof(addr));
 
@@ -72,7 +73,7 @@ public:
             throw std::runtime_error(strerror(errno));
         }
 
-        if (!mReactor.addHandler(mServerFd, [this](){
+        if (!mReactor.add_read_rdy(mServerFd, [this](){
                 handleServerRead();
             }))
         {
@@ -99,7 +100,8 @@ public:
 
         char loc[24];
         inet_ntop(AF_INET, &addr.sin_addr.s_addr, loc, sizeof(loc));
-        Logless("TetisSimulator: connected client fd=_ address=_:_", res, loc, ntohs(addr.sin_port));
+        logless::log(tetris_logger(), logless::DEBUG, logless::LOGALL,
+            "TetrisSimulator: connected client fd=%d; address=%s; port=%hu;", res, loc, ntohs(addr.sin_port));
 
         std::unique_lock<std::mutex> lg(mConnectionsMutex);
         auto empRes = mConnections.emplace(res, std::make_shared<ConnectionSession>(res, *this));
@@ -107,25 +109,56 @@ public:
 
         auto connection = empRes.first->second;
 
-        if (!mReactor.addHandler(res, [connection](){
+        if (!mReactor.add_read_rdy(res, [connection](){
                 connection->handleRead();
             }))
         {
-            Logless("TetisSimulator: Failed to register connection fd=_ to EpollReactor, errno=\"_\"", res, strerror(errno));
+            logless::log(tetris_logger(), logless::DEBUG, logless::LOGALL,
+                "TetrisSimulator: Failed to register connection fd=%d; to EpollReactor, errno=%s;", res, strerror(errno));
             onDisconnect(res);
         }
     }
 
-    void onDisconnect(int pFd)
+    void broadcastClientChat(const ClientChat& pMsg, int senderFd) override
     {
-        Logless("TetisSimulator: Disconnected client fd=_", pFd);
-
+        TetrisProtocol message;
+        message = pMsg;
         std::unique_lock<std::mutex> lg(mConnectionsMutex);
-        if (!mReactor.removeHandler(pFd))
+        for (auto& c : mConnections)
         {
-            Logless("TetisSimulator: Failed to delete client fd=_ from EpollReactor, errno=\"_\"", pFd, strerror(errno));
+            if (c.first != senderFd)
+            {
+                c.second->send(message);
+            }
         }
-        mConnections.erase(pFd);
+    }
+
+    void onDisconnect(int pFd) override
+    {
+        logless::log(tetris_logger(), logless::DEBUG, logless::LOGALL,
+            "TetrisSimulator: Disconnected client fd=%d;", pFd);
+
+        std::shared_ptr<ConnectionSession> session;
+        {
+            std::unique_lock<std::mutex> lg(mConnectionsMutex);
+            auto it = mConnections.find(pFd);
+            if (it == mConnections.end())
+            {
+                return;
+            }
+            session = it->second;
+            if (!mReactor.rem_read_rdy(pFd))
+            {
+                logless::log(tetris_logger(), logless::DEBUG, logless::LOGALL,
+                    "TetrisSimulator: Failed to delete client fd=%d; from EpollReactor, errno=%s;", pFd, strerror(errno));
+            }
+            mConnections.erase(it);
+        }
+
+        if (auto game = session->attachedGame())
+        {
+            game->onConnectionLost(std::static_pointer_cast<IConnectionSession>(session));
+        }
     }
 
     void run()
@@ -133,7 +166,7 @@ public:
         mReactor.run();
     }
 
-    std::shared_ptr<Game> getGame(uint32_t pGameId)
+    std::shared_ptr<Game> getGame(uint32_t pGameId) override
     {
         std::unique_lock<std::mutex> lg(mGamesMutex);
         if (!mGames.count(pGameId))
@@ -144,13 +177,47 @@ public:
         return mGames.at(pGameId);
     }
 
-    int createGame(std::shared_ptr<Game> pGame)
+    int createGame(std::shared_ptr<Game> pGame) override
     {
         std::unique_lock<std::mutex> lg(mGamesMutex);
-        auto id = mGameIdCtr++;
+        auto id = static_cast<uint32_t>(mGameIdCtr++);
+        pGame->setGameId(id);
         mGames.emplace(id, std::move(pGame));
-        Logless("TetrisSimulator : Allocating Game id=_", id);
+        logless::log(tetris_logger(), logless::DEBUG, logless::LOGALL,
+            "TetrisSimulator: Allocating Game id=%d;", id);
+        return static_cast<int>(id);
+    }
+
+    void destroyGame(uint32_t pGameId) override
+    {
+        std::unique_lock<std::mutex> lg(mGamesMutex);
+        mGames.erase(pGameId);
+    }
+
+    GameTimerId scheduleGameTimer(std::chrono::nanoseconds delay, bfc::light_function<void()> cb) override
+    {
+        const int64_t us = std::chrono::duration_cast<std::chrono::microseconds>(delay).count();
+        auto id = mReactor.get_timer().wait_us(us, std::move(cb));
+        mReactor.wake_up(nullptr);
         return id;
+    }
+
+    bool cancelGameTimer(GameTimerId id) override
+    {
+        const bool ok = mReactor.get_timer().cancel(id);
+        mReactor.wake_up(nullptr);
+        return ok;
+    }
+
+    void cancelGameTimer(std::optional<GameTimerId>& slot) override
+    {
+        if (!slot)
+        {
+            return;
+        }
+        mReactor.get_timer().cancel(*slot);
+        slot.reset();
+        mReactor.wake_up(nullptr);
     }
 
 private:
@@ -161,7 +228,7 @@ private:
     int mGameIdCtr = 0;
     std::mutex mGamesMutex;
 
-    bfc::EpollReactor mReactor;
+    bfc::epoll_reactor<> mReactor;
 
     int mServerFd;
 };

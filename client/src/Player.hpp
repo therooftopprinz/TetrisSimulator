@@ -3,10 +3,10 @@
 
 #include <interface/protocol.hpp>
 
-#include <cstdio>
 #include <deque>
 #include <optional>
 #include <unordered_map>
+#include <vector>
 
 #include <common/Terminoes.hpp>
 #include <common/StandardTetrisBoard.hpp>
@@ -15,6 +15,8 @@
 
 namespace tetris
 {
+
+class NcursesUi;
 
 struct PlayerContext
 {
@@ -33,6 +35,7 @@ struct PlayerContext
     int8_t x;
     int8_t y;
     int8_t floor;
+    bool dead = false;
 
     TransformFn transformer;
     traits::CheckerFn* checkerFn = nullptr;
@@ -49,6 +52,7 @@ struct PlayerContext
         transformer = {};
         applier = nullptr;
         checkerFn = nullptr;
+        dead = false;
     }
 
     void initializeCurrentTermino(Termino pTerm)
@@ -67,6 +71,8 @@ struct PlayerContext
 
 class Player
 {
+    friend class NcursesUi;
+
 public:
     Player(ITetrisClient& pClient, JoinAccept&& pConfig)
         : mClient(pClient)
@@ -81,15 +87,25 @@ public:
             player.name = i.name;
         }
 
+        bindGameplayInput();
+        draw();
+    }
+
+    void bindGameplayInput()
+    {
         mClient.disableConsole();
         mClient.setKeyHandler([this](char key) -> void {
                 keyIn(key);
             });
-        draw();
     }
 
     Player() = delete;
     Player(const Player&&) = delete;
+
+    bool isGameStarted() const noexcept
+    {
+        return mGameStarted;
+    }
 
     template<typename T>
     void onMsg(T&& pMsg)
@@ -205,16 +221,54 @@ private:
 
     void handle(GameStartNotification&& pMsg)
     {
+        mClient.notifyMatchStarted();
         mGameStarted = true;
+        mGameOverSequence.clear();
+        mCurrentTarget.reset();
         for (auto& i : mPlayers)
         {
             i.second.reset();
         }
     }
 
+    void handle(GameOverNotification&& pMsg)
+    {
+        if (!mGameStarted)
+        {
+            return;
+        }
+        mGameOverSequence.push_back(pMsg.player);
+
+        auto foundIt = mPlayers.find(pMsg.player);
+        if (foundIt != mPlayers.end())
+        {
+            // Multiplayer: the server sends a final GameOver for the last standing player;
+            // handle(GameEndNotification) clears dead for that id.
+            foundIt->second.dead = true;
+        }
+        if (mCurrentTarget && *mCurrentTarget == pMsg.player)
+        {
+            mCurrentTarget.reset();
+        }
+        draw();
+    }
+
     void handle(GameEndNotification&& pMsg)
     {
+        if (mPlayers.size() > 1 && !mGameOverSequence.empty())
+        {
+            const uint8_t last = mGameOverSequence.back();
+            auto winIt = mPlayers.find(last);
+            if (winIt != mPlayers.end())
+            {
+                winIt->second.dead = false;
+            }
+        }
+        mGameOverSequence.clear();
+
         mGameStarted = false;
+        mClient.consoleLog("[client]: match ended.");
+        mClient.notifyMatchEnded();
     }
 
     void handle(PlayerUpdateNotification&& pMsg)
@@ -225,6 +279,37 @@ private:
             auto& player = res.first->second;
             player.id = i.id;
             player.name = i.name;
+        }
+
+        for (const auto& rem : pMsg.playerToDelete)
+        {
+            const bool self = (rem.id == mPlayerId);
+            if (mCurrentTarget && *mCurrentTarget == rem.id)
+            {
+                mCurrentTarget.reset();
+            }
+            mPlayers.erase(rem.id);
+            if (self)
+            {
+                if (DeleteReason::DISCONNECTED == rem.reason)
+                {
+                    mClient.consoleLog("[client]: you were removed (peer disconnected).");
+                }
+                else if (DeleteReason::LEFT == rem.reason)
+                {
+                    mClient.consoleLog("[client]: returned to lobby.");
+                }
+                else
+                {
+                    mClient.consoleLog("[client]: you were removed from the game.");
+                }
+                mClient.requestExitToLobby();
+                return;
+            }
+        }
+        if (!pMsg.playerToDelete.empty())
+        {
+            draw();
         }
     }
 
@@ -299,171 +384,23 @@ private:
 
     void draw()
     {
-        clearScreen();
-        setCursor(0, mHeight-1);
-        print("Tetris Simulator Client [%dx%d]", mConfig.boardWidth, mConfig.boardHeight);
-
-        // main player
-        auto& player = mPlayers.find(mPlayerId)->second;
-        drawBoard(0,3, player);
-
-        // current target
-        if (mCurrentTarget)
-        {
-            auto foundIt = mPlayers.find(*mCurrentTarget);
-            if (mPlayers.end() != foundIt)
-            {
-                auto& player = foundIt->second;
-                drawBoard(30,3, player);
-            }
-        }
-
-        setCursor(0, 1);
-        print("key_input >> %3d %3d %3d", mKeyPressHistory[2], mKeyPressHistory[1], mKeyPressHistory[0]);
-
-        setCursor(0, 0);
-        print("command latency: %4dms", mLatencyMeas.count());
-
-        printf("\x1b[2J");
-        for (auto i=0u; i<mHeight; i++)
-        {
-            for (auto j=0u; j<mWidth; j++)
-            {
-                unsigned cursor = (mHeight-i-1)*mWidth + j;
-                uint8_t pixel = mFrame[cursor] & 0xFF;
-                pixel = pixel ? pixel : ' ';
-                printf("%c", pixel);
-            }
-            printf("\n");
-        }
-
-        printf("\x1b[0;0f");
-    }
-
-    void drawBoard(uint8_t pX, uint8_t pY, PlayerContext& pPlayer)
-    {
-        uint8_t topBoard = pY + mConfig.boardHeight + 2;
-        setCursor(pX, pY);
-        for (unsigned i = 0; i<mConfig.boardWidth+2u; i++) putchar('#');
-
-        setCursor(pX, pY+mConfig.boardHeight+1u);
-        for (unsigned i = 0; i<mConfig.boardWidth+2u; i++) putchar('#');
-
-        for (unsigned i = 0; i<mConfig.boardHeight+1u; i++)
-        {
-            setCursor(pX, pY+i);
-            putchar('#');
-        }
-
-        for (unsigned i = 0; i<mConfig.boardHeight+1u; i++)
-        {
-            setCursor(pX+mConfig.boardWidth+1, pY+i);
-            putchar('#');
-        }
-
-        setCursor(pX, pY + topBoard + 3);
-        print("id:%d name:\"%s\"", pPlayer.id, pPlayer.name.c_str());
-
-        char hold= ' ';
-        char current = ' ';
-        std::string next;
-        int incoming = 0;
-
-        auto toChar = [](Termino pTerm) {
-                static const char* map = "ILJOSZT";
-                return map[(int)pTerm];
-            };
-
-
-        if (pPlayer.hold)
-        {
-            hold = toChar(*pPlayer.hold);
-        }
-        for (auto i = pPlayer.hold ? 1u : 0u; i<pPlayer.queue.size(); i++)
-        {
-            next.push_back(toChar(pPlayer.queue[i]));
-        }
-        if (pPlayer.current)
-        {
-            current = toChar(*pPlayer.current);
-        }
-        if (pPlayer.incoming)
-        {
-            incoming = *pPlayer.incoming;
-        } 
-
-        setCursor(pX, topBoard + 2);
-        print("current:%c hold:%c",  current, hold);
-        setCursor(pX, topBoard + 1);
-        print("next:%s incoming:%d", next.c_str(), incoming);
-
-        auto bitmap = pPlayer.bitmap;
-        for (auto i=0u; i<bitmap.dimension().second; i++)
-        {
-            for (auto j=0u; j<bitmap.dimension().first; j++)
-            {
-                auto x = pX+1+j;
-                auto y = pY+1+i;
-                if (!bitmap.get(j, i))
-                {
-                    continue;
-                }
-
-                setCursor(x, y);
-                putchar('@');
-            }
-        }
-        if (pPlayer.current)
-        {
-            auto x = pX + pPlayer.x + 1;
-            auto y = pY + pPlayer.y + 1;
-
-            pPlayer.applier(x, y, [this](CellCoord pCoord)
-                {
-                    setCursor(pCoord.first, pCoord.second);
-                    putchar('@');
-                }, pPlayer.transformer);
-
-            auto ghosty = pY + pPlayer.floor + 1;
-
-            pPlayer.applier(x, ghosty, [this](CellCoord pCoord)
-                {
-                    setCursor(pCoord.first, pCoord.second);
-                    putchar('-');
-                }, pPlayer.transformer);
-        }
-    }
-
-    template <typename... T>
-    void print(const char* pFmt, T&&... pArgs)
-    {
-        static char buff[512];
-        auto len = sprintf(buff, pFmt, std::forward<T>(pArgs)...);
-        for (int i=0; i<len; i++)
-        {
-            putchar(buff[i]);
-        }
-    }
-
-    void putchar(uint8_t pChar)
-    {
-        mFrame[mCursor] &= 0xFFFFFF00;
-        mFrame[mCursor] |= pChar;
-        mCursor++;
-    }
-
-    void clearScreen()
-    {
-        std::memset(mFrame, 0, sizeof(mFrame));
-    }
-
-    void setCursor(uint8_t x, uint8_t y)
-    {
-        mCursor = y*mWidth + x;
+        mClient.paintGameView();
     }
 
     void keyIn(char pKey)
     {
+        if (mClient.tryHandleGameplayChat(pKey))
+        {
+            return;
+        }
+
+        if (3 == static_cast<unsigned char>(pKey))
+        {
+            mClient.sendLeaveIndication();
+            mClient.requestExitToLobby();
+            return;
+        }
+
         mKeyPressHistory.emplace_front(pKey);
         if (4 == mKeyPressHistory.size())
         {
@@ -511,12 +448,6 @@ private:
         }
     }
 
-    unsigned mWidth = 80;
-    unsigned mHeight = 40;
-
-    uint32_t mFrame[80*40];
-    size_t mCursor;
-
     std::deque<char> mKeyPressHistory = std::deque<char>(3);
 
     std::chrono::high_resolution_clock::time_point mLatencyMeasStart;
@@ -530,6 +461,7 @@ private:
     std::unordered_map<uint8_t, PlayerContext> mPlayers;
 
     std::optional<uint8_t> mCurrentTarget;
+    std::vector<uint8_t> mGameOverSequence;
 
     bool mGameStarted = false;
 };

@@ -1,4 +1,5 @@
 #include <ConnectionSession.hpp>
+#include <tetris_log.hpp>
 
 namespace tetris
 {
@@ -6,9 +7,8 @@ namespace tetris
 ConnectionSession::ConnectionSession(int pFd, ITetrisSimulator& pTetrisSim)
     : mFd(pFd)
     , mTetrisSim(pTetrisSim)
-    , mTp(bfc::Singleton<bfc::ThreadPool<>>::get())
-    , mMp(bfc::Singleton<bfc::Log2MemoryPool<>>::get())
-    , mTimer(bfc::Singleton<bfc::Timer<>>::get())
+    , mTp(tetris::singleton<bfc::thread_pool<>>::get())
+    , mMp(tetris::singleton<bfc::log2_memory_pool<>>::get())
 {
 }
 
@@ -24,7 +24,8 @@ void ConnectionSession::reset()
         return;
     }
 
-    Logless("ConnectionSession[fd=_]: reset: closing socket...", mFd);
+    logless::log(tetris_logger(), logless::DEBUG, logless::LOGALL,
+        "ConnectionSession[fd=%d;]: reset: closing socket...", mFd);
 
     close(mFd);
     mFd = -1;
@@ -32,6 +33,38 @@ void ConnectionSession::reset()
 
 void ConnectionSession::disassociateGame()
 {
+    mGame.reset();
+    mSessionMode = IDLE;
+}
+
+const std::string& ConnectionSession::clientDisplayName() const
+{
+    return mClientDisplayName;
+}
+
+void ConnectionSession::onMsg(ClientChat& pMsg, TetrisProtocol&)
+{
+    if (!pMsg.name.empty())
+    {
+        mClientDisplayName = pMsg.name;
+    }
+    if (!pMsg.message.empty())
+    {
+        mTetrisSim.broadcastClientChat(pMsg, mFd);
+    }
+}
+
+void ConnectionSession::onMsg(LeaveIndication&& pMsg, TetrisProtocol&)
+{
+    if (!mGame)
+    {
+        return;
+    }
+    if (static_cast<uint32_t>(pMsg.gameId) != mGame->gameId())
+    {
+        return;
+    }
+    mGame->onVoluntaryLeave(std::static_pointer_cast<IConnectionSession>(shared_from_this()));
 }
 
 void ConnectionSession::handleRead()
@@ -90,7 +123,8 @@ void ConnectionSession::decodeMessage(std::byte* pRaw, size_t pSize)
     std::string stred;
     str("root", message, stred, true);
 
-    Logless("ConnectionSession[fd=_]: receive: raw=_ decoded=_", mFd, BufferLog(pSize, pRaw), stred.c_str());
+    logless::log(tetris_logger(), logless::DEBUG, logless::LOGALL,
+        "ConnectionSession[fd=%d;]: receive: raw=%%; decoded=%s;", mFd, BufferLog(pSize, pRaw), stred.c_str());
     // mMp.free(pRaw, pSize);
     delete[] pRaw;
 
@@ -110,7 +144,7 @@ void ConnectionSession::onMsg(CreateGameRequest&& pMsg)
     else
     {
         mSessionMode = GM;
-        mGame = std::make_shared<Game>(std::move(pMsg), shared_from_this(), mTp, mTimer);
+        mGame = std::make_shared<Game>(std::move(pMsg), shared_from_this(), mTetrisSim);
         message = CreateGameAccept{};
         auto& createGameAccept = std::get<CreateGameAccept>(message);
         createGameAccept.gameId = mTetrisSim.createGame(mGame);
@@ -147,8 +181,9 @@ void ConnectionSession::send(TetrisProtocol& pMessage)
 
     std::string stred;
     str("root", pMessage, stred, true);
-    Logless("ConnectionSession[fd=_]: send: raw=_ encoded=_", mFd, BufferLog(msgSize, buffer+2), stred.c_str());
-    Logger::getInstance().flush();
+    logless::log(tetris_logger(), logless::DEBUG, logless::LOGALL,
+        "ConnectionSession[fd=%d;]: send: raw=%%; encoded=%s;", mFd, BufferLog(msgSize, buffer+2), stred.c_str());
+    tetris_logger().flush();
 
     auto res = ::send(mFd, buffer, msgSize+2, 0);
     if (-1 == res)

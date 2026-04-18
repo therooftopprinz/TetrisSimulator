@@ -12,6 +12,7 @@ struct IConnectionSession
     virtual ~IConnectionSession() {}
     virtual void send(TetrisProtocol& pMessage) = 0;
     virtual void disassociateGame() = 0;
+    virtual const std::string& clientDisplayName() const = 0;
 };
 
 } // namespace tetris

@@ -26,7 +26,7 @@ struct TetrisBoardCallbacksMock
     MOCK_METHOD1(placePiece, void(Termino));
     MOCK_METHOD1(rotate, void(uint8_t));
     MOCK_METHOD1(piecesAdded, void(std::vector<Termino>));
-    MOCK_METHOD0(hold, void());
+    MOCK_METHOD1(hold, void(Termino));
     MOCK_METHOD0(commit, void());
     MOCK_METHOD0(gameOver, void());
 
@@ -46,7 +46,7 @@ struct TetrisBoardTest : Test
         rawCallbacks.placePiece = [this](Termino pTermino) {return callbacks.placePiece(pTermino);};
         rawCallbacks.rotate = [this](uint8_t pRot) {return callbacks.rotate(pRot);};
         rawCallbacks.piecesAdded = [this](std::vector<Termino> pTerminos) {return callbacks.piecesAdded(std::move(pTerminos));};
-        rawCallbacks.hold = [this]() {return callbacks.hold();};
+        rawCallbacks.hold = [this](Termino pTermino) { callbacks.hold(pTermino); };
         rawCallbacks.commit = [this]() {return callbacks.commit();};
         rawCallbacks.gameOver = [this]() {return callbacks.gameOver();};
     }

@@ -15,7 +15,9 @@ struct TetrisClientMock : ITetrisClient
     MOCK_METHOD1(consoleLog, void(const std::string&));
     MOCK_METHOD0(enableConsole, void());
     MOCK_METHOD0(disableConsole, void());
-    MOCK_METHOD1(setKeyHandler, void(bfc::LightFn<void(char)>));
+    MOCK_METHOD1(setKeyHandler, void(bfc::light_function<void(char)>));
+    MOCK_METHOD0(requestExitToLobby, void());
+    MOCK_METHOD0(sendLeaveIndication, void());
 };
 
 struct PlayerTest : Test
@@ -24,10 +26,20 @@ struct PlayerTest : Test
     {
         EXPECT_CALL(mClientMock, setKeyHandler(_))
             .WillOnce(SaveArg<0>(&mPlayerKeyer));
-        sut.emplace(0, mClientMock, mBoardConfig);
+        JoinAccept join{};
+        join.player = 0;
+        join.secret = 0;
+        join.boardWidth = mBoardConfig.width;
+        join.boardHeight = mBoardConfig.height;
+        PlayerInfo pi{};
+        pi.id = 0;
+        pi.name = "p";
+        pi.mode = PlayerMode::PLAYER;
+        join.playerToAddList.push_back(pi);
+        sut.emplace(mClientMock, std::move(join));
     }
 
-    bfc::LightFn<void(char)> mPlayerKeyer;
+    bfc::light_function<void(char)> mPlayerKeyer;
     NiceMock<TetrisClientMock> mClientMock;
     TetrisBoardConfig mBoardConfig = {10,24};
     std::optional<tetris::Player> sut;

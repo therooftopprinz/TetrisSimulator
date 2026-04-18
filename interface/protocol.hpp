@@ -34,6 +34,7 @@
 // Enumeration:  ('CodeType', ('TINY_BIN', None))
 // Enumeration:  ('DeleteReason', ('DISCONNECTED', None))
 // Enumeration:  ('DeleteReason', ('KICKED', None))
+// Enumeration:  ('DeleteReason', ('LEFT', None))
 // Enumeration:  ('PlayerMode', ('SPECTATOR', None))
 // Enumeration:  ('PlayerMode', ('PLAYER', None))
 // Enumeration:  ('AttackModeEnum', ('SEQUENTIAL', None))
@@ -122,6 +123,9 @@
 // Sequence:  PlayerActionIndication ('u8', 'player')
 // Sequence:  PlayerActionIndication ('u8', 'count')
 // Sequence:  PlayerActionIndication ('Action', 'action')
+// Sequence:  ClientChat ('String', 'name')
+// Sequence:  ClientChat ('String', 'message')
+// Sequence:  LeaveIndication ('u64', 'gameId')
 // Choice:  ('TetrisProtocol', 'CreateGameRequest')
 // Choice:  ('TetrisProtocol', 'CreateGameAccept')
 // Choice:  ('TetrisProtocol', 'CreateGameReject')
@@ -140,6 +144,8 @@
 // Choice:  ('TetrisProtocol', 'JoinAccept')
 // Choice:  ('TetrisProtocol', 'JoinReject')
 // Choice:  ('TetrisProtocol', 'PlayerActionIndication')
+// Choice:  ('TetrisProtocol', 'ClientChat')
+// Choice:  ('TetrisProtocol', 'LeaveIndication')
 // Generating for C++
 #ifndef __CUM_MSG_HPP__
 #define __CUM_MSG_HPP__
@@ -193,7 +199,8 @@ enum class CodeType : uint8_t
 enum class DeleteReason : uint8_t
 {
     DISCONNECTED,
-    KICKED
+    KICKED,
+    LEFT
 };
 
 enum class PlayerMode : uint8_t
@@ -392,7 +399,18 @@ struct PlayerActionIndication
     Action action;
 };
 
-using TetrisProtocol = std::variant<CreateGameRequest,CreateGameAccept,CreateGameReject,GameStartIndication,PieceRequest,PieceResponse,AttackLinesRequest,AttackLinesResponse,AttackIndication,GameStartNotification,PlayerUpdateNotification,BoardUpdateNotification,GameOverNotification,GameEndNotification,JoinRequest,JoinAccept,JoinReject,PlayerActionIndication>;
+struct ClientChat
+{
+    String name;
+    String message;
+};
+
+struct LeaveIndication
+{
+    u64 gameId;
+};
+
+using TetrisProtocol = std::variant<CreateGameRequest,CreateGameAccept,CreateGameReject,GameStartIndication,PieceRequest,PieceResponse,AttackLinesRequest,AttackLinesResponse,AttackIndication,GameStartNotification,PlayerUpdateNotification,BoardUpdateNotification,GameOverNotification,GameEndNotification,JoinRequest,JoinAccept,JoinReject,PlayerActionIndication,ClientChat,LeaveIndication>;
 /***********************************************
 /
 /            Codec Definitions
@@ -467,6 +485,7 @@ inline void str(const char* pName, const DeleteReason& pIe, std::string& pCtx, b
     }
     if (DeleteReason::DISCONNECTED == pIe) pCtx += "\"DISCONNECTED\"";
     if (DeleteReason::KICKED == pIe) pCtx += "\"KICKED\"";
+    if (DeleteReason::LEFT == pIe) pCtx += "\"LEFT\"";
     pCtx = pCtx + "}";
     if (!pIsLast)
     {
@@ -1668,6 +1687,75 @@ inline void str(const char* pName, const PlayerActionIndication& pIe, std::strin
     }
 }
 
+inline void encode_per(const ClientChat& pIe, cum::per_codec_ctx& pCtx)
+{
+    using namespace cum;
+    encode_per(pIe.name, pCtx);
+    encode_per(pIe.message, pCtx);
+}
+
+inline void decode_per(ClientChat& pIe, cum::per_codec_ctx& pCtx)
+{
+    using namespace cum;
+    decode_per(pIe.name, pCtx);
+    decode_per(pIe.message, pCtx);
+}
+
+inline void str(const char* pName, const ClientChat& pIe, std::string& pCtx, bool pIsLast)
+{
+    using namespace cum;
+    if (!pName)
+    {
+        pCtx = pCtx + "{";
+    }
+    else
+    {
+        pCtx = pCtx + "\"" + pName + "\":{";
+    }
+    size_t nOptional = 0;
+    size_t nMandatory = 2;
+    str("name", pIe.name, pCtx, !(--nMandatory+nOptional));
+    str("message", pIe.message, pCtx, !(--nMandatory+nOptional));
+    pCtx = pCtx + "}";
+    if (!pIsLast)
+    {
+        pCtx += ",";
+    }
+}
+
+inline void encode_per(const LeaveIndication& pIe, cum::per_codec_ctx& pCtx)
+{
+    using namespace cum;
+    encode_per(pIe.gameId, pCtx);
+}
+
+inline void decode_per(LeaveIndication& pIe, cum::per_codec_ctx& pCtx)
+{
+    using namespace cum;
+    decode_per(pIe.gameId, pCtx);
+}
+
+inline void str(const char* pName, const LeaveIndication& pIe, std::string& pCtx, bool pIsLast)
+{
+    using namespace cum;
+    if (!pName)
+    {
+        pCtx = pCtx + "{";
+    }
+    else
+    {
+        pCtx = pCtx + "\"" + pName + "\":{";
+    }
+    size_t nOptional = 0;
+    size_t nMandatory = 1;
+    str("gameId", pIe.gameId, pCtx, !(--nMandatory+nOptional));
+    pCtx = pCtx + "}";
+    if (!pIsLast)
+    {
+        pCtx += ",";
+    }
+}
+
 inline void encode_per(const TetrisProtocol& pIe, cum::per_codec_ctx& pCtx)
 {
     using namespace cum;
@@ -1745,6 +1833,14 @@ inline void encode_per(const TetrisProtocol& pIe, cum::per_codec_ctx& pCtx)
     else if (17 == type)
     {
         encode_per(std::get<17>(pIe), pCtx);
+    }
+    else if (18 == type)
+    {
+        encode_per(std::get<18>(pIe), pCtx);
+    }
+    else if (19 == type)
+    {
+        encode_per(std::get<19>(pIe), pCtx);
     }
 }
 
@@ -1843,6 +1939,16 @@ inline void decode_per(TetrisProtocol& pIe, cum::per_codec_ctx& pCtx)
     {
         pIe = PlayerActionIndication();
         decode_per(std::get<17>(pIe), pCtx);
+    }
+    else if (18 == type)
+    {
+        pIe = ClientChat();
+        decode_per(std::get<18>(pIe), pCtx);
+    }
+    else if (19 == type)
+    {
+        pIe = LeaveIndication();
+        decode_per(std::get<19>(pIe), pCtx);
     }
 }
 
@@ -2029,6 +2135,26 @@ inline void str(const char* pName, const TetrisProtocol& pIe, std::string& pCtx,
             pCtx += "{";
         std::string name = "PlayerActionIndication";
         str(name.c_str(), std::get<17>(pIe), pCtx, true);
+        pCtx += "}";
+    }
+    else if (18 == type)
+    {
+        if (pName)
+            pCtx += std::string(pName) + ":{";
+        else
+            pCtx += "{";
+        std::string name = "ClientChat";
+        str(name.c_str(), std::get<18>(pIe), pCtx, true);
+        pCtx += "}";
+    }
+    else if (19 == type)
+    {
+        if (pName)
+            pCtx += std::string(pName) + ":{";
+        else
+            pCtx += "{";
+        std::string name = "LeaveIndication";
+        str(name.c_str(), std::get<19>(pIe), pCtx, true);
         pCtx += "}";
     }
     if (!pIsLast)

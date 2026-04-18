@@ -1,12 +1,15 @@
 #ifndef __SEQUENTIALATTACKER_HPP__
 #define __SEQUENTIALATTACKER_HPP__
 
-#include <logless/Logger.hpp>
+#include <optional>
+
+#include <tetris_log.hpp>
 
 #include <interface/protocol.hpp>
 
 #include <IAttacker.hpp>
 #include <IExecutor.hpp>
+#include <ITetrisSimulator.hpp>
 #include <PlayerContext.hpp>
 
 namespace tetris
@@ -15,12 +18,12 @@ namespace tetris
 class CommonAttacker : public IAttacker
 {
 public:
-    CommonAttacker(IExecutor& pExecutor, const CreateGameRequest& pConfig, std::unordered_map<uint8_t, PlayerContext>& pPlayers, bfc::ThreadPool<>& pTp, bfc::Timer<>& pTimer)
+    CommonAttacker(IExecutor& pExecutor, const CreateGameRequest& pConfig, std::unordered_map<uint8_t, PlayerContext>& pPlayers, ITetrisSimulator& pSimulator)
         : mExecutor(pExecutor)
         , mConfig(pConfig)
         , mPlayers(pPlayers)
-        , mTp(pTp)
-        , mTimer(pTimer)
+        , mCurrentTarget(pPlayers.end())
+        , mSimulator(pSimulator)
     {
         if (0 == mConfig.attackMode.index())
         {
@@ -39,18 +42,21 @@ public:
             return;
         }
 
-        Logless("CommonAttacker[_]: start mode=_", this, (unsigned)mMode);
+        logless::log(tetris_logger(), logless::DEBUG, logless::LOGALL,
+            "CommonAttacker[%p;]: start mode=%u;", this, (unsigned)mMode);
 
         if (SEQUENTIAL == mMode)
         {
             mCurrentTarget = next(mPlayers.begin());
             if (mPlayers.end() == mCurrentTarget)
             {
-                Logless("CommonAttacker[_]: start cancelled!", this);
+                logless::log(tetris_logger(), logless::DEBUG, logless::LOGALL,
+                    "CommonAttacker[%p;]: start cancelled!", this);
                 return;
             }
 
-            Logless("CommonAttacker[_]: currentTarget=_", this, (unsigned)mCurrentTarget->second.id);
+            logless::log(tetris_logger(), logless::DEBUG, logless::LOGALL,
+                "CommonAttacker[%p;]: currentTarget=%u;", this, (unsigned)mCurrentTarget->second.id);
             mCurrentTarget->second.receivedLines = 0;
             mCurrentTarget->second.board->onEvent(board::IncomingAttack{0});
         }
@@ -61,9 +67,11 @@ public:
 
     void stop()
     {
-        Logless("CommonAttacker[_]: stop", this);
+        logless::log(tetris_logger(), logless::DEBUG, logless::LOGALL,
+            "CommonAttacker[%p;]: stop", this);
         mRunning = false;
-        mTimerId = -1;
+        mSimulator.cancelGameTimer(mTimerId);
+        mCurrentTarget = mPlayers.end();
     }
 
     void attack(PlayerContext& pPlayer, uint8_t pLines)
@@ -73,7 +81,8 @@ public:
             return;
         }
         
-        Logless("CommonAttacker[_]: attack dmg=_ src=_ dst=_", this, (unsigned)pLines, (unsigned)pPlayer.id, (unsigned)mCurrentTarget->second.id);
+        logless::log(tetris_logger(), logless::DEBUG, logless::LOGALL,
+            "CommonAttacker[%p;]: attack dmg=%u; src=%u; dst=%u;", this, (unsigned)pLines, (unsigned)pPlayer.id, (unsigned)mCurrentTarget->second.id);
 
         if (!pLines)
         {
@@ -122,22 +131,23 @@ private:
             return;
         }
 
-        mTimer.cancel(mTimerId);
+        mSimulator.cancelGameTimer(mTimerId);
         auto timediff = std::chrono::nanoseconds(mConfig.attackModeCommon.targetChangeTimeoutMs)*1000*1000;
-        mTimerId = mTimer.schedule(timediff, [this] {
-                bfc::LightFn<void()> fn = [this]() -> void {onTimeout();};
+        mTimerId = mSimulator.scheduleGameTimer(timediff, [this] {
+                bfc::light_function<void()> fn = [this]() -> void {onTimeout();};
                 mExecutor.trigger(std::move(fn));
             });
     }
 
     void onTimeout()
     {
-        if (mTimerId<0)
+        if (!mTimerId)
         {
             return;
         }
 
-        Logless("CommonAttacker[_]: targetChangeTimeout!", this);
+        logless::log(tetris_logger(), logless::DEBUG, logless::LOGALL,
+            "CommonAttacker[%p;]: targetChangeTimeout!", this);
 
         if (SEQUENTIAL == mMode)
         {
@@ -161,7 +171,8 @@ private:
                 }
             }
 
-            Logless("CommonAttacker[_]: currentTarget=_", this, (unsigned)mCurrentTarget->second.id);
+            logless::log(tetris_logger(), logless::DEBUG, logless::LOGALL,
+                "CommonAttacker[%p;]: currentTarget=%u;", this, (unsigned)mCurrentTarget->second.id);
             mCurrentTarget->second.board->onEvent(board::IncomingAttack{0});
         }
 
@@ -175,11 +186,10 @@ private:
     enum AttackMode{NONE, SEQUENTIAL, RANDOM, LEAST, MOST, DIVIDE} mMode = NONE;
     std::unordered_map<uint8_t, PlayerContext>::iterator mCurrentTarget;
 
-    int mTimerId = -1;
+    std::optional<GameTimerId> mTimerId;
     bool mRunning = false;
 
-    bfc::ThreadPool<>& mTp;
-    bfc::Timer<>& mTimer;
+    ITetrisSimulator& mSimulator;
 };
 
 } // tetris

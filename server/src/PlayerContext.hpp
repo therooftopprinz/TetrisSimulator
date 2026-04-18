@@ -2,8 +2,9 @@
 #define __PLAYERCONTEXT_HPP
 
 #include <functional>
+#include <optional>
 
-#include <bfc/FixedFunctionObject.hpp>
+#include <GameTimerId.hpp>
 
 #include <common/StandardTetrisBoard.hpp>
 
@@ -26,7 +27,7 @@ public:
     void restart()
     {
         boardUpdates = {};
-        lockTimerId = -1;
+        lockTimerId.reset();
         internalMode = PLAYING; 
         currentPieceIndex = 0;
         receivedLines = 0;
@@ -38,7 +39,7 @@ public:
     enum InternalMode{PLAYING, GAMEOVER} internalMode = GAMEOVER;
     PlayerMode playerMode = PlayerMode::PLAYER;
     int receivedLines;
-    int lockTimerId = -1;
+    std::optional<GameTimerId> lockTimerId;
     TetrisBoardCallbacks callbacks;
     uint32_t currentPieceIndex = 0;
     std::unique_ptr<ITetrisBoard> board;

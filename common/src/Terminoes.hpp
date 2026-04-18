@@ -3,7 +3,7 @@
 
 #include <cstdint>
 #include <utility>
-#include <bfc/FixedFunctionObject.hpp>
+#include <bfc/function.hpp>
 
 #include <common/Bitmap.hpp>
 
@@ -18,8 +18,8 @@ struct TerminoCell
 };
 
 using CellCoord = std::pair<int8_t,int8_t>;
-using TransformFn = bfc::LightFn<CellCoord(CellCoord)>;
-using ApplyFn = bfc::LightFn<void(CellCoord)>;
+using TransformFn = bfc::light_function<CellCoord(CellCoord)>;
+using ApplyFn = bfc::light_function<void(CellCoord)>;
 
 template <typename... Cells>
 struct TerminoOperator
@@ -178,9 +178,9 @@ namespace traits
 
     enum {WIDTH, HEIGHT};
 
-    using CheckerFn = size_t (*)(const Bitmap&, int8_t, int8_t, const bfc::LightFn<CellCoord(CellCoord)>&);
+    using CheckerFn = size_t (*)(const Bitmap&, int8_t, int8_t, const bfc::light_function<CellCoord(CellCoord)>&);
     using RotatorFn = CellCoord (*)(uint8_t, CellCoord);
-    using SetterFn = bool(*)(Bitmap&, int8_t, int8_t, const bfc::LightFn<CellCoord(CellCoord)>&);
+    using SetterFn = bool(*)(Bitmap&, int8_t, int8_t, const bfc::light_function<CellCoord(CellCoord)>&);
     using ApplierFn = void(*)(int8_t, int8_t, const ApplyFn&, const TransformFn&);
     using TraitsTuple = std::tuple<uint8_t, uint8_t, CheckerFn, RotatorFn, SetterFn, ApplierFn>;
 

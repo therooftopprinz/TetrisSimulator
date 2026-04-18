@@ -1,23 +1,17 @@
 #include <TetrisSimulator.hpp>
 
-#include <bfc/Singleton.hpp>
-#include <bfc/Timer.hpp>
-#include <bfc/ThreadPool.hpp>
-#include <bfc/MemoryPool.hpp>
+#include <singleton.hpp>
+#include <bfc/thread_pool.hpp>
+#include <bfc/memory_pool.hpp>
 
-#include <logless/Logger.hpp>
+#include <tetris_log.hpp>
 
 int main()
 {
-    Logger::getInstance().logful();
+    tetris_logger().logful();
 
-    bfc::Singleton<bfc::ThreadPool<>>::instantiate();
-    auto& timer = bfc::Singleton<bfc::Timer<>>::instantiate();
-    bfc::Singleton<bfc::Log2MemoryPool<>>::instantiate();
-
-    std::thread timerThread([&timer]{
-        timer.run();
-    });
+    tetris::singleton<bfc::thread_pool<>>::instantiate();
+    tetris::singleton<bfc::log2_memory_pool<>>::instantiate();
 
     tetris::TetrisSimulatorConfig config{};
     config.port = 9999;
@@ -25,6 +19,4 @@ int main()
     tetris::TetrisSimulator sim(config);
 
     sim.run();
-    timer.stop();
-    timerThread.join();
 }

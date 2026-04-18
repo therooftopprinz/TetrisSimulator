@@ -2,16 +2,17 @@
 #define __GAME_HPP__
 
 #include <cstring>
-#include <stdexcept>
-#include <variant>
 #include <functional>
+#include <memory>
+#include <stdexcept>
+#include <unordered_map>
+#include <variant>
 
 #include <sys/socket.h>
 #include <netinet/in.h> 
 
-#include <bfc/Timer.hpp>
-#include <bfc/ThreadPool.hpp>
-#include <bfc/FixedFunctionObject.hpp>
+#include <bfc/thread_pool.hpp>
+#include <bfc/function.hpp>
 
 #include <interface/protocol.hpp>
 
@@ -25,16 +26,24 @@
 namespace tetris
 {
 
-using GameEvent = std::variant<TetrisProtocol, bfc::LightFn<void()>, std::function<void()>>;
+using GameEvent = std::variant<TetrisProtocol, bfc::light_function<void()>, std::function<void()>>;
 
 class Game : public IExecutor
 {
 public:
-    Game(CreateGameRequest&& pConfig, std::weak_ptr<IConnectionSession> pGmSession, bfc::ThreadPool<>& pTp, bfc::Timer<>& pTimer);
+    Game(CreateGameRequest&& pConfig, std::weak_ptr<IConnectionSession> pGmSession, ITetrisSimulator& pSimulator);
     Game (const Game&) = delete;
     void operator=(const Game&) = delete;
 
+    void setGameId(uint32_t pId) { mGameId = pId; }
+
+    uint32_t gameId() const { return mGameId; }
+
     void join(JoinRequest& pMsg, std::weak_ptr<IConnectionSession> pPlayerSession);
+
+    void onConnectionLost(std::shared_ptr<IConnectionSession> session);
+
+    void onVoluntaryLeave(std::shared_ptr<IConnectionSession> session);
 
     template <typename T>
     void onMsg(T&& pMsg)
@@ -53,8 +62,8 @@ public:
                     lg.unlock();
                     break;
                 }
-                auto event = std::move(mGameEvents.back());
-                mGameEvents.pop_back();
+                auto event = std::move(mGameEvents.front());
+                mGameEvents.pop_front();
                 lg.unlock();
                 runEvent(event);
             }
@@ -64,7 +73,7 @@ public:
 
 private:
 
-    void trigger(bfc::LightFn<void()> pFn);
+    void trigger(bfc::light_function<void()> pFn);
     void trigger(std::function<void()> pFn);
     void runEvent(GameEvent& pEvent);
 
@@ -72,7 +81,7 @@ private:
     void handle(T&)
     {}
 
-    void handle(bfc::LightFn<void()>& pFn);
+    void handle(bfc::light_function<void()>& pFn);
     void handle(std::function<void()>& pFn);
     void handle(TetrisProtocol& pMsg);
     void handle(GameStartIndication& pMsg);
@@ -92,6 +101,13 @@ private:
     void onBcbGameover(PlayerContext& pPlayer);
     void onBcbIncomingAttack(PlayerContext& pPlayer, uint8_t);
 
+    void concludeMatchIfOneOrNoPlayersLeft();
+    void shutdownDueToGmDisconnect();
+    void removePlayerAt(std::unordered_map<uint8_t, PlayerContext>::iterator it, DeleteReason reason);
+    void handleConnectionLostNow(const std::shared_ptr<IConnectionSession>& session);
+    void handleVoluntaryLeaveNow(const std::shared_ptr<IConnectionSession>& session);
+
+    void beginPlaying(PlayerContext& pPlayer);
     void startPlayerTimer(PlayerContext& pPlayer);
     void onLockingTimeout(PlayerContext& pPlayer);
 
@@ -110,6 +126,8 @@ private:
     CreateGameRequest mConfig;
     std::weak_ptr<IConnectionSession> mGmSession;
 
+    uint32_t mGameId = 0;
+
     bool mGameStarted = false;
     unsigned mPlayingCount;
     std::unordered_map<uint8_t, PlayerContext> mPlayers;
@@ -118,11 +136,10 @@ private:
 
     std::unique_ptr<IAttacker> mAttacker;
 
-    std::unordered_map<int, bfc::LightFn<void()>> mTriggers;
+    std::unordered_map<int, bfc::light_function<void()>> mTriggers;
     int mTriggersId = 0;
 
-    bfc::ThreadPool<>& mTp;
-    bfc::Timer<>& mTimer;
+    ITetrisSimulator& mSimulator;
 };
 
 } // namespace tetris

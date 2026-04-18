@@ -2,8 +2,5 @@
 
 git submodule update --init --recursive
 
-pushd .
-
-cd Logless && mkdir -p build && cd build && ../configure.py && make logless.a && make spawner
-
-popd
+cmake -S Logless -B Logless/build -DCMAKE_BUILD_TYPE=Release
+cmake --build Logless/build -j"$(nproc)"

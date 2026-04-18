@@ -3,8 +3,6 @@
 
 #include <functional>
 
-#include <bfc/FixedFunctionObject.hpp>
-
 namespace tetris
 {
 

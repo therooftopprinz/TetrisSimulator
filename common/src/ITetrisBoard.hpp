@@ -24,18 +24,18 @@ struct ITetrisBoard
 
 struct TetrisBoardCallbacks
 {
-    bfc::LightFn<Termino()> generate;
-    bfc::LightFn<void(std::vector<Line>)> replace;
-    bfc::LightFn<void(std::vector<Line>)> insert;
-    bfc::LightFn<void(std::vector<uint8_t>)> clear;
-    bfc::LightFn<void(CellCoord)> piecePosition;
-    bfc::LightFn<void(Termino)> placePiece;
-    bfc::LightFn<void(uint8_t)> rotate;
-    bfc::LightFn<void(std::vector<Termino>)> piecesAdded;
-    bfc::LightFn<void(Termino)> hold;
-    bfc::LightFn<void()> commit;
-    bfc::LightFn<void()> gameOver;
-    bfc::LightFn<void(uint8_t)> incomingAttack;
+    bfc::light_function<Termino()> generate;
+    bfc::light_function<void(std::vector<Line>)> replace;
+    bfc::light_function<void(std::vector<Line>)> insert;
+    bfc::light_function<void(std::vector<uint8_t>)> clear;
+    bfc::light_function<void(CellCoord)> piecePosition;
+    bfc::light_function<void(Termino)> placePiece;
+    bfc::light_function<void(uint8_t)> rotate;
+    bfc::light_function<void(std::vector<Termino>)> piecesAdded;
+    bfc::light_function<void(Termino)> hold;
+    bfc::light_function<void()> commit;
+    bfc::light_function<void()> gameOver;
+    bfc::light_function<void(uint8_t)> incomingAttack;
 };
 
 

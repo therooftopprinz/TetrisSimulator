@@ -6,8 +6,6 @@
 #include <cmath>
 #include <optional>
 
-#include <bfc/FixedFunctionObject.hpp>
-
 #include <interface/protocol.hpp>
 
 #include <common/ITetrisBoard.hpp>

@@ -59,6 +59,7 @@ public:
     {
         mStarted = false;
         mClient.consoleLog("[GameMaster]: game ended!");
+        mClient.notifyMatchEnded();
     }
 
     bool start()
@@ -76,6 +77,7 @@ public:
         mClient.send(message);
 
         mStarted = true;
+        mClient.notifyMatchStarted();
         return true;
     }
 

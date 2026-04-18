@@ -1,5 +1,23 @@
+#include <iostream>
 #include <regex>
 #include <TetrisClient.hpp>
+#include <tetris_log.hpp>
+
+namespace
+{
+
+void printClientUsage(const char* argv0)
+{
+    std::cerr
+        << "Usage: " << argv0 << " --server=<IPv4>:<port> [--cmd=<line>]\n\n"
+        << "Startup options (each argument must be --name=value):\n"
+        << "  --server=<IPv4>:<port>  Required. TCP address of the Tetris server.\n"
+        << "  --cmd=<text>            Optional. One console line to run after connect\n"
+        << "                          (for example: /create or /join id=1).\n\n"
+        << "At the interactive prompt, lines without a leading / send chat; type \"/help\" for commands.\n";
+}
+
+} // namespace
 
 std::pair<uint32_t, uint16_t> parseIpPort(const std::map<std::string, std::string>& pOptions)
 {
@@ -44,17 +62,23 @@ int main(int argc, const char *argv[])
     std::smatch match;
     std::map<std::string, std::string> options;
 
-    Logger::getInstance().logless();
+    tetris_logger().logless();
 
     for (int i=1; i<argc; i++)
     {
         auto s = std::string(argv[i]);
+        if (s == "--help" || s == "-h")
+        {
+            printClientUsage(argv[0]);
+            return 0;
+        }
         if (std::regex_match(s, match, arger))
         {
             options.emplace(match[1].str(), match[2].str());
         }
         else
         {
+            printClientUsage(argv[0]);
             throw std::runtime_error(std::string("invalid argument: `") + argv[i] + "`");
         }
     }

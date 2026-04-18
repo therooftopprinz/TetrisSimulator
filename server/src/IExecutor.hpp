@@ -3,7 +3,7 @@
 
 #include <functional>
 
-#include <bfc/FixedFunctionObject.hpp>
+#include <bfc/function.hpp>
 
 namespace tetris
 {
@@ -11,7 +11,7 @@ namespace tetris
 struct IExecutor
 {
     virtual void trigger(std::function<void()>) = 0;
-    virtual void trigger(bfc::LightFn<void()>) = 0;
+    virtual void trigger(bfc::light_function<void()>) = 0;
 };
 
 } // tetris

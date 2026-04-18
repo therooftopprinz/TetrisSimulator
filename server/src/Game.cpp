@@ -1,15 +1,17 @@
 #include <Game.hpp>
 
+#include <exception>
+#include <functional>
+
 namespace tetris
 {
 
-Game::Game(CreateGameRequest&& pConfig, std::weak_ptr<IConnectionSession> pGmSession, bfc::ThreadPool<>& pTp, bfc::Timer<>& pTimer)
+Game::Game(CreateGameRequest&& pConfig, std::weak_ptr<IConnectionSession> pGmSession, ITetrisSimulator& pSimulator)
     : mBoardConfig{pConfig.boardWidth, pConfig.boardHeight}
     , mConfig(std::move(pConfig))
     , mGmSession(pGmSession)
-    , mAttacker(std::make_unique<CommonAttacker>(*this, mConfig, mPlayers, pTp, pTimer))
-    , mTp(pTp)
-    , mTimer(pTimer)
+    , mAttacker(std::make_unique<CommonAttacker>(*this, mConfig, mPlayers, pSimulator))
+    , mSimulator(pSimulator)
 {
     mRunningWokerLock.unlock();
 }
@@ -21,6 +23,14 @@ void Game::join(JoinRequest& pMsg, std::weak_ptr<IConnectionSession> pPlayerSess
 
             auto res = mPlayers.emplace(std::piecewise_construct, std::forward_as_tuple(id), std::forward_as_tuple(id, mBoardConfig, pPlayerSession));
             auto& player = res.first->second;
+            if (auto sp = pPlayerSession.lock())
+            {
+                const std::string& dn = sp->clientDisplayName();
+                if (!dn.empty())
+                {
+                    player.name = dn;
+                }
+            }
             auto& playerCallbacks = player.callbacks;
             playerCallbacks.generate = [&player, this]() -> Termino {return onBcbGenerate(player);};
             playerCallbacks.insert = [&player, this](std::vector<Line> pLines) {return onBcbInsert(player, std::move(pLines));};
@@ -65,12 +75,21 @@ void Game::join(JoinRequest& pMsg, std::weak_ptr<IConnectionSession> pPlayerSess
                     send(playerX, message);
                 }
             }
+
+            if (mGameStarted)
+            {
+                beginPlaying(player);
+                if (mPlayingCount > 1)
+                {
+                    mAttacker->start();
+                }
+            }
         };
 
     trigger(std::move(doAdd));
 }
 
-void Game::trigger(bfc::LightFn<void()> pFn)
+void Game::trigger(bfc::light_function<void()> pFn)
 {
     onMsg(std::move(pFn));
 }
@@ -85,7 +104,7 @@ void Game::runEvent(GameEvent& pEvent)
     std::visit([this](auto& pEvent){handle(pEvent);}, pEvent);
 }
 
-void Game::handle(bfc::LightFn<void()>& pFn)
+void Game::handle(bfc::light_function<void()>& pFn)
 {
     pFn();
 }
@@ -111,18 +130,10 @@ void Game::handle(GameStartIndication& pMsg)
     mPlayingCount = 0;
 
     mTerminoCache.clear();
-    TetrisProtocol message = GameStartNotification{};
 
     for (auto& i : mPlayers)
     {
-        auto& player = i.second;
-        if (player.connectionSession.lock() && PlayerMode::PLAYER == player.playerMode)
-        {
-            send(player, message);
-            player.restart();
-            mPlayingCount++;
-            startPlayerTimer(player);
-        }
+        beginPlaying(i.second);
     }
 
     if (1 == mPlayingCount)
@@ -131,6 +142,20 @@ void Game::handle(GameStartIndication& pMsg)
     }
 
     mAttacker->start();
+}
+
+void Game::beginPlaying(PlayerContext& pPlayer)
+{
+    if (!pPlayer.connectionSession.lock() || PlayerMode::PLAYER != pPlayer.playerMode)
+    {
+        return;
+    }
+
+    TetrisProtocol message = GameStartNotification{};
+    send(pPlayer, message);
+    pPlayer.restart();
+    mPlayingCount++;
+    startPlayerTimer(pPlayer);
 }
 
 void Game::handle(PieceResponse& pMsg)
@@ -335,8 +360,7 @@ void Game::onBcbGameover(PlayerContext& pPlayer)
 
     pPlayer.internalMode = PlayerContext::GAMEOVER;
 
-    mTimer.cancel(pPlayer.lockTimerId);
-    pPlayer.lockTimerId = -1;
+    mSimulator.cancelGameTimer(pPlayer.lockTimerId);
 
     mPlayingCount--;
 
@@ -350,38 +374,194 @@ void Game::onBcbGameover(PlayerContext& pPlayer)
         send(i.second, message);
     }
 
+    concludeMatchIfOneOrNoPlayersLeft();
+}
+
+void Game::concludeMatchIfOneOrNoPlayersLeft()
+{
     if (mPlayingCount == 1)
     {
+        TetrisProtocol message = GameOverNotification{};
+        auto& gameOverNotification = std::get<GameOverNotification>(message);
         for (auto& i : mPlayers)
         {
             auto& player = i.second;
             if (PlayerContext::PLAYING == player.internalMode)
             {
-
-                mTimer.cancel(player.lockTimerId);
-                player.lockTimerId = -1;
-
+                mSimulator.cancelGameTimer(player.lockTimerId);
                 gameOverNotification.player = player.id;
-
                 send(message);
-                for (auto& i : mPlayers)
+                for (auto& j : mPlayers)
                 {
-                    send(i.second, message);
+                    send(j.second, message);
                 }
+                break;
             }
-
         }
     }
 
     if (mPlayingCount <= 1)
     {
         mGameStarted = false;
-        message = GameEndNotification{};
+        TetrisProtocol message = GameEndNotification{};
         send(message);
         for (auto& i : mPlayers)
         {
             send(i.second, message);
         }
+        mAttacker->stop();
+    }
+}
+
+void Game::onConnectionLost(std::shared_ptr<IConnectionSession> session)
+{
+    if (!session)
+    {
+        return;
+    }
+    trigger(std::function<void()>([this, session]() { handleConnectionLostNow(session); }));
+}
+
+void Game::handleConnectionLostNow(const std::shared_ptr<IConnectionSession>& session)
+{
+    if (auto gm = mGmSession.lock())
+    {
+        if (gm.get() == session.get())
+        {
+            shutdownDueToGmDisconnect();
+            return;
+        }
+    }
+
+    for (auto it = mPlayers.begin(); it != mPlayers.end(); ++it)
+    {
+        auto ps = it->second.connectionSession.lock();
+        if (ps && ps.get() == session.get())
+        {
+            removePlayerAt(it, DeleteReason::DISCONNECTED);
+            return;
+        }
+    }
+}
+
+void Game::onVoluntaryLeave(std::shared_ptr<IConnectionSession> session)
+{
+    if (!session)
+    {
+        return;
+    }
+    trigger(std::function<void()>([this, session]() { handleVoluntaryLeaveNow(session); }));
+}
+
+void Game::handleVoluntaryLeaveNow(const std::shared_ptr<IConnectionSession>& session)
+{
+    if (auto gm = mGmSession.lock())
+    {
+        if (gm.get() == session.get())
+        {
+            shutdownDueToGmDisconnect();
+            return;
+        }
+    }
+
+    for (auto it = mPlayers.begin(); it != mPlayers.end(); ++it)
+    {
+        auto ps = it->second.connectionSession.lock();
+        if (ps && ps.get() == session.get())
+        {
+            removePlayerAt(it, DeleteReason::LEFT);
+            return;
+        }
+    }
+}
+
+void Game::shutdownDueToGmDisconnect()
+{
+    mAttacker->stop();
+
+    TetrisProtocol msg = GameEndNotification{};
+    for (auto& kv : mPlayers)
+    {
+        mSimulator.cancelGameTimer(kv.second.lockTimerId);
+    }
+
+    for (auto& kv : mPlayers)
+    {
+        if (auto s = kv.second.connectionSession.lock())
+        {
+            try
+            {
+                s->send(msg);
+            }
+            catch (const std::exception&)
+            {
+            }
+            s->disassociateGame();
+        }
+    }
+
+    if (auto gm = mGmSession.lock())
+    {
+        try
+        {
+            gm->send(msg);
+        }
+        catch (const std::exception&)
+        {
+        }
+        gm->disassociateGame();
+    }
+
+    mPlayers.clear();
+    mGameStarted = false;
+    mPlayingCount = 0;
+    mSimulator.destroyGame(mGameId);
+}
+
+void Game::removePlayerAt(std::unordered_map<uint8_t, PlayerContext>::iterator it, DeleteReason reason)
+{
+    PlayerContext& removed = it->second;
+    const uint8_t removedId = removed.id;
+    std::shared_ptr<IConnectionSession> disconnected = removed.connectionSession.lock();
+
+    mAttacker->stop();
+    mSimulator.cancelGameTimer(removed.lockTimerId);
+
+    const bool wasPlaying = (PlayerContext::PLAYING == removed.internalMode);
+    if (wasPlaying)
+    {
+        mPlayingCount--;
+    }
+
+    TetrisProtocol msg = PlayerUpdateNotification{};
+    auto& pun = std::get<PlayerUpdateNotification>(msg);
+    pun.playerToDelete.emplace_back(PlayerToRemove{removedId, reason});
+
+    send(msg);
+    for (auto& kv : mPlayers)
+    {
+        send(kv.second, msg);
+    }
+
+    mPlayers.erase(it);
+
+    if (disconnected)
+    {
+        disconnected->disassociateGame();
+    }
+
+    if (mGameStarted && mPlayingCount > 1)
+    {
+        mAttacker->start();
+    }
+    else
+    {
+        mAttacker->stop();
+    }
+
+    if (wasPlaying)
+    {
+        concludeMatchIfOneOrNoPlayersLeft();
     }
 }
 
@@ -395,17 +575,17 @@ void Game::onBcbIncomingAttack(PlayerContext& pPlayer, uint8_t pLines)
 void Game::startPlayerTimer(PlayerContext& pPlayer)
 {
     auto& timerId = pPlayer.lockTimerId;
-    mTimer.cancel(timerId);
+    mSimulator.cancelGameTimer(timerId);
     auto timediff = std::chrono::nanoseconds(mConfig.lockingTimeoutMs)*1000*1000;
-    timerId = mTimer.schedule(timediff, [this, &pPlayer] {
-            bfc::LightFn<void()> fn = [this, &pPlayer]() -> void {onLockingTimeout(pPlayer);};
+    timerId = mSimulator.scheduleGameTimer(timediff, [this, &pPlayer] {
+            bfc::light_function<void()> fn = [this, &pPlayer]() -> void {onLockingTimeout(pPlayer);};
             trigger(std::move(fn));
         });
 }
 
 void Game::onLockingTimeout(PlayerContext& pPlayer)
 {
-    if (-1 == pPlayer.lockTimerId || PlayerContext::GAMEOVER == pPlayer.internalMode)
+    if (!pPlayer.lockTimerId || PlayerContext::GAMEOVER == pPlayer.internalMode)
     {
         return;
     }
@@ -413,7 +593,7 @@ void Game::onLockingTimeout(PlayerContext& pPlayer)
     auto& board = pPlayer.board;
     board->onEvent(board::Lock{});
 
-    if (-1 != pPlayer.lockTimerId && PlayerContext::GAMEOVER != pPlayer.internalMode)
+    if (pPlayer.lockTimerId && PlayerContext::GAMEOVER != pPlayer.internalMode)
     {
         startPlayerTimer(pPlayer);
     }
